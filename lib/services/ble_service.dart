@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
-import '../models/battery_data.dart';
+//import '../models/battery_data.dart';
 import '../parsers/jk_bms_parser.dart';
 import '../providers/battery_provider.dart';
 import 'jk_command_service.dart';
@@ -21,28 +21,26 @@ class BleService {
   });
 
   // =========================================================
-  // SCAN
+  // BLE
   // =========================================================
 
-  StreamSubscription? scanSubscription;
+  StreamSubscription? _scanSubscription;
 
-  List<BluetoothDevice> devices = [];
+  StreamSubscription? _notifySubscription;
 
-  // =========================================================
-  // CONNECTION
-  // =========================================================
+  StreamSubscription? _connectionStateSubscription;
 
   BluetoothDevice? connectedDevice;
 
   BluetoothCharacteristic? jkCharacteristic;
 
+  List<BluetoothDevice> devices = [];
+
   // =========================================================
-  // DATA
+  // BUFFER
   // =========================================================
 
   final List<int> packetBuffer = [];
-
-  final List<String> logs = [];
 
   int packetCount = 0;
 
@@ -58,33 +56,49 @@ class BleService {
 
   Future<void> startScan() async {
 
-    debugPrint("STARTING BLE SCAN");
-
     devices.clear();
 
+    debugPrint(
+      'STARTING BLE SCAN',
+    );
+
     await FlutterBluePlus.startScan(
-      timeout: const Duration(seconds: 5),
+
+      timeout:
+      const Duration(seconds: 10),
+
       androidScanMode:
       AndroidScanMode.lowLatency,
     );
 
-    scanSubscription =
+    _scanSubscription =
         FlutterBluePlus.scanResults.listen(
+
               (results) {
 
-            for (ScanResult result in results) {
+            for (final result in results) {
 
-              final device = result.device;
+              final device =
+                  result.device;
 
-              if (device.platformName.isNotEmpty &&
-                  !devices.contains(device)) {
+              if (
+
+              device.platformName
+                  .isNotEmpty &&
+
+                  !devices.contains(device)
+
+              ) {
 
                 devices.add(device);
 
                 debugPrint(
-                  "FOUND DEVICE: "
-                      "${device.platformName} "
-                      "${device.remoteId}",
+
+                  'FOUND DEVICE: '
+
+                      '${device.platformName} '
+
+                      '${device.remoteId}',
                 );
               }
             }
@@ -98,11 +112,11 @@ class BleService {
 
   Future<void> stopScan() async {
 
-    debugPrint("STOPPING SCAN");
-
     await FlutterBluePlus.stopScan();
 
-    await scanSubscription?.cancel();
+    await _scanSubscription?.cancel();
+
+    _scanSubscription = null;
   }
 
   // =========================================================
@@ -118,302 +132,481 @@ class BleService {
     try {
 
       await device.connect(
+
         license: License.free,
+
+        timeout:
+        const Duration(seconds: 15),
       );
+
+      debugPrint(
+        'CONNECTED TO: '
+            '${device.platformName}',
+      );
+
+      batteryProvider
+          .setConnectionState(true);
 
     } catch (e) {
 
       debugPrint(
-        "CONNECT WARNING: $e",
+        'CONNECT ERROR: $e',
       );
+
+      batteryProvider
+          .setConnectionState(false);
+
+      rethrow;
     }
 
-    debugPrint(
-      "CONNECTED TO: "
-          "${device.platformName}",
-    );
-
-    batteryProvider.setConnectionState(
-      true,
-    );
-
-    // =====================================================
+    // =======================================================
     // CONNECTION STATE
-    // =====================================================
+    // =======================================================
 
-    device.connectionState.listen((state) {
+    _connectionStateSubscription =
 
-      debugPrint(
-        "CONNECTION STATE: $state",
-      );
-    });
+        device.connectionState.listen(
 
-    // =====================================================
+              (state) {
+
+            debugPrint(
+              'CONNECTION STATE: $state',
+            );
+
+            if (
+
+            state ==
+                BluetoothConnectionState
+                    .disconnected
+
+            ) {
+
+              _onDeviceDisconnected();
+            }
+          },
+        );
+
+    // =======================================================
     // DISCOVER SERVICES
-    // =====================================================
+    // =======================================================
 
-    List<BluetoothService> services =
+    final services =
     await device.discoverServices();
 
     debugPrint(
-      "SERVICES FOUND: "
-          "${services.length}",
+      'SERVICES FOUND: '
+          '${services.length}',
     );
 
-    // =====================================================
-    // FIND JK SERVICE
-    // =====================================================
-
-    for (BluetoothService service
-    in services) {
+    for (final service in services) {
 
       final serviceUuid =
+
       service.uuid
           .toString()
           .toLowerCase();
 
-      debugPrint(
-        "SERVICE: $serviceUuid",
-      );
-
-      // ===================================================
-      // JK MAIN SERVICE
-      // ===================================================
-
-      if (serviceUuid == "ffe0") {
+      if (serviceUuid.contains('ffe0')) {
 
         debugPrint(
-          "FOUND JK SERVICE",
+          'FOUND JK SERVICE',
         );
 
-        for (BluetoothCharacteristic
-        characteristic
+        for (final characteristic
         in service.characteristics) {
 
-          final uuid =
+          final charUuid =
+
           characteristic.uuid
               .toString()
               .toLowerCase();
 
-          debugPrint(
-            "CHARACTERISTIC: $uuid",
-          );
-
-          // =================================================
-          // MAIN JK UART CHARACTERISTIC
-          // =================================================
-
-          if (uuid == "ffe1") {
+          if (charUuid.contains('ffe1')) {
 
             debugPrint(
-              "FOUND JK CHARACTERISTIC",
+              'FOUND JK CHARACTERISTIC',
             );
 
-            jkCharacteristic = characteristic;
+            jkCharacteristic =
+                characteristic;
 
-            // ===============================================
-            // ENABLE NOTIFICATIONS
-            // ===============================================
-
-            await characteristic
-                .setNotifyValue(true);
-
-            debugPrint(
-              "NOTIFICATIONS ENABLED",
-            );
-
-            // ===============================================
-            // LISTEN FOR DATA
-            // ===============================================
-
-            characteristic
-                .lastValueStream
-                .listen((value) {
-
-              if (value.isEmpty) return;
-
-              // Add chunk to buffer
-              packetBuffer.addAll(value);
-
-              // Packet count
-              packetCount++;
-
-              debugPrint(
-                "PACKET COUNT: "
-                    "$packetCount",
-              );
-
-              // ---------------------------------------------
-              // CURRENT CHUNK
-              // ---------------------------------------------
-
-              final chunkHex = value
-                  .map(
-                    (e) => e
-                    .toRadixString(16)
-                    .padLeft(2, '0'),
-              )
-                  .join(' ');
-
-              debugPrint(
-                "CHUNK: $chunkHex",
-              );
-
-              // ---------------------------------------------
-              // FULL BUFFER
-              // ---------------------------------------------
-
-              final bufferHex = packetBuffer
-                  .map(
-                    (e) => e
-                    .toRadixString(16)
-                    .padLeft(2, '0'),
-              )
-                  .join(' ');
-
-              debugPrint(
-                "BUFFER: $bufferHex",
-              );
-
-              // Save logs
-              logs.add(bufferHex);
-
-              // =============================================
-              // CHECK JK PACKET
-              // =============================================
-
-              if (JkBmsParser
-                  .isValidPacket(
-                packetBuffer,
-              )) {
-
-                debugPrint(
-                  "VALID JK PACKET DETECTED",
-                );
-
-                // -------------------------------------------
-                // PARSE VALUES
-                // -------------------------------------------
-
-                final voltage =
-                JkBmsParser
-                    .parseVoltage(
-                  packetBuffer,
-                );
-
-                final current =
-                JkBmsParser
-                    .parseCurrent(
-                  packetBuffer,
-                );
-
-                final soc =
-                JkBmsParser
-                    .parseSoc(
-                  packetBuffer,
-                );
-
-                final temperature =
-                JkBmsParser
-                    .parseTemperature(
-                  packetBuffer,
-                );
-
-                final cells =
-                JkBmsParser
-                    .parseCellVoltages(
-                  packetBuffer,
-                );
-
-                // -------------------------------------------
-                // UPDATE PROVIDER
-                // -------------------------------------------
-
-                batteryProvider
-                    .updateTelemetry(
-
-                  voltage: voltage,
-
-                  current: current,
-
-                  soc: soc,
-
-                  temperature: temperature,
-
-                  cellVoltages: cells,
-
-                  isConnected: true,
-                );
-
-                // -------------------------------------------
-                // DEBUG OUTPUT
-                // -------------------------------------------
-
-                debugPrint(
-                  "VOLTAGE: "
-                      "$voltage V",
-                );
-
-                debugPrint(
-                  "CURRENT: "
-                      "$current A",
-                );
-
-                debugPrint(
-                  "SOC: "
-                      "$soc %",
-                );
-
-                debugPrint(
-                  "TEMPERATURE: "
-                      "$temperature °C",
-                );
-
-                debugPrint(
-                  "CELL COUNT: "
-                      "${cells.length}",
-                );
-
-                // -------------------------------------------
-                // CLEAR BUFFER
-                // -------------------------------------------
-
-                packetBuffer.clear();
-              }
-            });
-
-            // ===============================================
-            // SEND INITIAL JK REQUEST
-            // ===============================================
-
-            final commandService =
-            JkCommandService();
-
-            await commandService
-                .sendInfoRequest(
+            await _setupCharacteristic(
               characteristic,
             );
 
-            debugPrint(
-              "INITIAL JK REQUEST SENT",
-            );
-
-            // ===============================================
-            // START POLLING
-            // ===============================================
-
-            startPolling();
+            break;
           }
         }
       }
     }
+
+    if (jkCharacteristic == null) {
+
+      debugPrint(
+        'JK CHARACTERISTIC NOT FOUND',
+      );
+    }
   }
 
   // =========================================================
-  // START POLLING
+  // SETUP CHARACTERISTIC
   // =========================================================
 
-  void startPolling() {
+  Future<void> _setupCharacteristic(
+      BluetoothCharacteristic characteristic,
+      ) async {
+
+    // =======================================================
+    // ENABLE NOTIFICATIONS
+    // =======================================================
+
+    await characteristic.setNotifyValue(true);
+
+    debugPrint(
+      'NOTIFICATIONS ENABLED',
+    );
+
+    // IMPORTANT FOR JK BMS
+    // WAIT AFTER ENABLING NOTIFICATIONS
+
+    await Future.delayed(
+      const Duration(seconds: 2),
+    );
+
+    // =======================================================
+    // LISTEN DATA
+    // =======================================================
+
+    _notifySubscription =
+        characteristic.lastValueStream.listen(
+
+              (chunk) {
+
+            if (chunk.isEmpty) return;
+
+            _onDataChunk(chunk);
+          },
+        );
+
+    // =======================================================
+    // COMMAND SERVICE
+    // =======================================================
+
+    final commandService =
+    JkCommandService();
+
+    // =======================================================
+    // DEVICE INFO REQUEST
+    // =======================================================
+
+    await commandService
+        .sendDeviceInfoRequest(
+      characteristic,
+    );
+
+    debugPrint(
+      'DEVICE INFO REQUEST SENT',
+    );
+
+    // WAIT BEFORE CELL INFO
+
+    await Future.delayed(
+      const Duration(seconds: 1),
+    );
+
+    // =======================================================
+    // CELL INFO REQUEST
+    // =======================================================
+
+    await commandService
+        .sendCellInfoRequest(
+      characteristic,
+    );
+
+    debugPrint(
+      'CELL INFO REQUEST SENT',
+    );
+
+    debugPrint(
+      'INITIAL REQUESTS SENT',
+    );
+
+    // =======================================================
+    // START POLLING
+    // =======================================================
+
+    _startPolling();
+  }
+
+  // =========================================================
+  // DATA CHUNK
+  // =========================================================
+
+  void _onDataChunk(
+      List<int> chunk,
+      ) {
+
+    packetBuffer.addAll(chunk);
+
+    packetCount++;
+
+    final hex = chunk
+
+        .map(
+          (e) => e
+          .toRadixString(16)
+          .padLeft(2, '0'),
+    )
+
+        .join(' ');
+
+    debugPrint(
+
+      'CHUNK #$packetCount '
+
+          '[${chunk.length}B]: '
+
+          '$hex',
+    );
+
+    // =======================================================
+    // WAIT HEADER
+    // =======================================================
+
+    if (packetBuffer.length < 4) {
+      return;
+    }
+
+    // =======================================================
+    // VALID HEADER
+    // =======================================================
+
+    final validHeader =
+
+        packetBuffer[0] == 0x55 &&
+
+            packetBuffer[1] == 0xAA &&
+
+            packetBuffer[2] == 0xEB &&
+
+            packetBuffer[3] == 0x90;
+
+    if (!validHeader) {
+
+      debugPrint(
+        'INVALID HEADER -> REALIGN',
+      );
+
+      _realignBuffer();
+
+      return;
+    }
+
+    // =======================================================
+    // WAIT COMPLETE FRAME
+    // =======================================================
+
+    if (packetBuffer.length < 300) {
+
+      debugPrint(
+
+        'BUFFERING... '
+
+            '${packetBuffer.length}/300',
+      );
+
+      return;
+    }
+
+    // =======================================================
+    // EXTRACT FRAME
+    // =======================================================
+
+    final frame =
+    packetBuffer.sublist(0, 300);
+
+    if (packetBuffer.length > 300) {
+
+      final remaining =
+      packetBuffer.sublist(300);
+
+      packetBuffer.clear();
+
+      packetBuffer.addAll(remaining);
+
+    } else {
+
+      packetBuffer.clear();
+    }
+
+    _processFrame(frame);
+  }
+
+  // =========================================================
+  // PROCESS FRAME
+  // =========================================================
+
+  void _processFrame(
+      List<int> frame,
+      ) {
+
+    // QUICK CHECK
+    debugPrint("FRAME LENGTH: ${frame.length}");
+    if (frame.length >= 4) {
+      debugPrint("HEADER: ${frame[0]} ${frame[1]} ${frame[2]} ${frame[3]}");
+    }
+
+    debugPrint(
+      'PROCESSING FRAME '
+          '[${frame.length} bytes]',
+    );
+
+    if (!JkBmsParser.isValidHeader(frame) ||
+        !JkBmsParser.isValidCrc(frame)) {
+
+      debugPrint(
+        'CRC INVALID',
+      );
+
+      return;
+    }
+
+    debugPrint(
+      'VALID JK FRAME',
+    );
+
+    final frameType =
+    JkBmsParser.frameType(frame);
+
+    debugPrint(
+      'FRAME TYPE: $frameType',
+    );
+
+    // =======================================================
+    // CELL INFO
+    // =======================================================
+
+    if (frameType == 0x02) {
+
+      final batteryData =
+      JkBmsParser.parseBatteryData(frame);
+
+      debugPrint(
+        'SOC: ${batteryData.soc}',
+      );
+
+      debugPrint(
+        'VOLTAGE: ${batteryData.voltage}',
+      );
+
+      debugPrint(
+        'CURRENT: ${batteryData.current}',
+      );
+
+      batteryProvider.updateTelemetry(
+
+        voltage:
+        batteryData.voltage,
+
+        current:
+        batteryData.current,
+
+        soc:
+        batteryData.soc,
+
+        temperature:
+        batteryData.temperature,
+
+        cellVoltages:
+        batteryData.cellVoltages,
+
+        cycleCount:
+        batteryData.cycleCount,
+
+        isCharging:
+        batteryData.isCharging,
+
+        power:
+        batteryData.power,
+
+        isConnected: true,
+      );
+    }
+
+    // =======================================================
+    // DEVICE INFO
+    // =======================================================
+
+    else if (frameType == 0x03) {
+
+      debugPrint(
+        'DEVICE INFO FRAME RECEIVED',
+      );
+    }
+
+    // =======================================================
+    // SETTINGS
+    // =======================================================
+
+    else if (frameType == 0x01) {
+
+      debugPrint(
+        'SETTINGS FRAME RECEIVED',
+      );
+    }
+  }
+
+  // =========================================================
+  // REALIGN BUFFER
+  // =========================================================
+
+  void _realignBuffer() {
+
+    for (
+
+    int i = 1;
+
+    i < packetBuffer.length - 3;
+
+    i++
+
+    ) {
+
+      if (
+
+      packetBuffer[i] == 0x55 &&
+
+          packetBuffer[i + 1] == 0xAA &&
+
+          packetBuffer[i + 2] == 0xEB &&
+
+          packetBuffer[i + 3] == 0x90
+
+      ) {
+
+        final realigned =
+        packetBuffer.sublist(i);
+
+        packetBuffer.clear();
+
+        packetBuffer.addAll(realigned);
+
+        debugPrint(
+          'BUFFER REALIGNED',
+        );
+
+        return;
+      }
+    }
+
+    packetBuffer.clear();
+  }
+
+  // =========================================================
+  // POLLING
+  // =========================================================
+
+  void _startPolling() {
 
     if (jkCharacteristic == null) {
       return;
@@ -422,8 +615,14 @@ class BleService {
     pollingTimer?.cancel();
 
     pollingTimer = Timer.periodic(
-      const Duration(seconds: 2),
+
+      const Duration(seconds: 3),
+
           (_) async {
+
+        if (jkCharacteristic == null) {
+          return;
+        }
 
         try {
 
@@ -431,21 +630,43 @@ class BleService {
           JkCommandService();
 
           await commandService
-              .sendInfoRequest(
+              .sendCellInfoRequest(
             jkCharacteristic!,
-          );
-
-          debugPrint(
-            "POLL REQUEST SENT",
           );
 
         } catch (e) {
 
           debugPrint(
-            "POLL ERROR: $e",
+            'POLL ERROR: $e',
           );
         }
       },
+    );
+
+    debugPrint(
+      'POLLING STARTED',
+    );
+  }
+
+  // =========================================================
+  // DEVICE DISCONNECTED
+  // =========================================================
+
+  void _onDeviceDisconnected() {
+
+    pollingTimer?.cancel();
+
+    pollingTimer = null;
+
+    packetBuffer.clear();
+
+    jkCharacteristic = null;
+
+    batteryProvider
+        .setConnectionState(false);
+
+    debugPrint(
+      'DEVICE DISCONNECTED',
     );
   }
 
@@ -459,22 +680,36 @@ class BleService {
 
       pollingTimer?.cancel();
 
+      pollingTimer = null;
+
+      await _notifySubscription?.cancel();
+
+      _notifySubscription = null;
+
+      await _connectionStateSubscription
+          ?.cancel();
+
+      _connectionStateSubscription = null;
+
       packetBuffer.clear();
+
+      jkCharacteristic = null;
 
       batteryProvider
           .setConnectionState(false);
 
-      await connectedDevice
-          ?.disconnect();
+      await connectedDevice?.disconnect();
+
+      connectedDevice = null;
 
       debugPrint(
-        "DEVICE DISCONNECTED",
+        'DISCONNECTED',
       );
 
     } catch (e) {
 
       debugPrint(
-        "DISCONNECT ERROR: $e",
+        'DISCONNECT ERROR: $e',
       );
     }
   }

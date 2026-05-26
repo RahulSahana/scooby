@@ -1,157 +1,83 @@
 import 'package:flutter/foundation.dart';
-
 import '../models/battery_data.dart';
+import '../services/ble_service.dart';
+
+// =========================================================
+// BATTERY PROVIDER
+// Central state for all battery telemetry.
+// Works with both BLE (direct) and HTTP (via backend).
+// =========================================================
 
 class BatteryProvider extends ChangeNotifier {
 
-  // =========================================================
-  // BATTERY DATA
-  // =========================================================
-
-  BatteryData _batteryData =
-  BatteryData.empty();
-
-  BatteryData get batteryData =>
-      _batteryData;
-
-  // =========================================================
-  // CONNECTION STATE
-  // =========================================================
+  BatteryData _batteryData = BatteryData.empty();
+  BatteryData get batteryData => _batteryData;
 
   bool _isConnected = false;
-
-  bool get isConnected =>
-      _isConnected;
-
-  // =========================================================
-  // LOADING STATE
-  // =========================================================
+  bool get isConnected => _isConnected;
 
   bool _isLoading = false;
+  bool get isLoading => _isLoading;
 
-  bool get isLoading =>
-      _isLoading;
-
-  // =========================================================
-  // LAST UPDATE
-  // =========================================================
+  // Which mode are we in?
+  ConnectionMode _mode = ConnectionMode.none;
+  ConnectionMode get mode => _mode;
 
   DateTime? _lastUpdated;
-
-  DateTime? get lastUpdated =>
-      _lastUpdated;
+  DateTime? get lastUpdated => _lastUpdated;
 
   // =========================================================
-  // UPDATE CONNECTION STATE
+  // BLE SERVICE
   // =========================================================
+  late final BleService _bleService;
+  BleService get bleService => _bleService;
 
-  void setConnectionState(
-      bool connected,
-      ) {
+  BatteryProvider() {
+    _bleService = BleService(batteryProvider: this);
+  }
 
+  // Convenience getters directly on provider
+  double get voltage => _batteryData.voltage;
+  double get current => _batteryData.current;
+  int get soc => _batteryData.soc;
+  double get temperature => _batteryData.temperature;
+  double get power => _batteryData.power;
+  int get cycleCount => _batteryData.cycleCount;
+  bool get isCharging => _batteryData.isCharging;
+  List<double> get cellVoltages => _batteryData.cellVoltages;
+
+  // =========================================================
+  // SET MODE
+  // =========================================================
+  void setMode(ConnectionMode mode) {
+    _mode = mode;
+    notifyListeners();
+  }
+
+  // =========================================================
+  // SET CONNECTION STATE
+  // =========================================================
+  void setConnectionState(bool connected) {
     _isConnected = connected;
-
+    if (!connected) {
+      // Don't wipe data on disconnect — keep last known values
+      _batteryData = _batteryData.copyWith(isConnected: false);
+    }
     notifyListeners();
   }
 
   // =========================================================
-  // UPDATE LOADING STATE
+  // SET LOADING
   // =========================================================
-
-  void setLoading(
-      bool loading,
-      ) {
-
+  void setLoading(bool loading) {
     _isLoading = loading;
-
-    notifyListeners();
-  }
-
-  // =========================================================
-  // UPDATE BATTERY DATA
-  // =========================================================
-
-  void updateBatteryData(
-      BatteryData data,
-      ) {
-
-    _batteryData = data;
-
-    _lastUpdated = DateTime.now();
-
-    notifyListeners();
-  }
-
-  // =========================================================
-  // UPDATE INDIVIDUAL VALUES
-  // =========================================================
-
-  void updateVoltage(
-      double voltage,
-      ) {
-
-    _batteryData =
-        _batteryData.copyWith(
-          voltage: voltage,
-        );
-
-    notifyListeners();
-  }
-
-  void updateCurrent(
-      double current,
-      ) {
-
-    _batteryData =
-        _batteryData.copyWith(
-          current: current,
-        );
-
-    notifyListeners();
-  }
-
-  void updateSoc(
-      int soc,
-      ) {
-
-    _batteryData =
-        _batteryData.copyWith(
-          soc: soc,
-        );
-
-    notifyListeners();
-  }
-
-  void updateTemperature(
-      double temperature,
-      ) {
-
-    _batteryData =
-        _batteryData.copyWith(
-          temperature: temperature,
-        );
-
-    notifyListeners();
-  }
-
-  void updateCellVoltages(
-      List<double> cells,
-      ) {
-
-    _batteryData =
-        _batteryData.copyWith(
-          cellVoltages: cells,
-        );
-
     notifyListeners();
   }
 
   // =========================================================
   // UPDATE FULL TELEMETRY
   // =========================================================
-
   void updateTelemetry({
-
     double? voltage,
     double? current,
     int? soc,
@@ -163,69 +89,49 @@ class BatteryProvider extends ChangeNotifier {
     bool? isConnected,
     List<double>? cellVoltages,
   }) {
+    _isConnected = isConnected ?? _isConnected;
 
-    _batteryData =
-        _batteryData.copyWith(
-
-          voltage:
-          voltage ??
-              _batteryData.voltage,
-
-          current:
-          current ??
-              _batteryData.current,
-
-          soc:
-          soc ??
-              _batteryData.soc,
-
-          power:
-          power ??
-              _batteryData.power,
-
-          temperature:
-          temperature ??
-              _batteryData.temperature,
-
-          range:
-          range ??
-              _batteryData.range,
-
-          cycleCount:
-          cycleCount ??
-              _batteryData.cycleCount,
-
-          isCharging:
-          isCharging ??
-              _batteryData.isCharging,
-
-          isConnected:
-          isConnected ??
-              _batteryData.isConnected,
-
-          cellVoltages:
-          cellVoltages ??
-              _batteryData.cellVoltages,
-        );
+    _batteryData = _batteryData.copyWith(
+      voltage: voltage,
+      current: current,
+      soc: soc,
+      power: power,
+      temperature: temperature,
+      range: range,
+      cycleCount: cycleCount,
+      isCharging: isCharging,
+      isConnected: isConnected,
+      cellVoltages: cellVoltages,
+    );
 
     _lastUpdated = DateTime.now();
-
     notifyListeners();
   }
 
   // =========================================================
-  // RESET DATA
+  // UPDATE BATTERY DATA (full replace)
   // =========================================================
+  void updateBatteryData(BatteryData data) {
+    _batteryData = data;
+    _isConnected = data.isConnected;
+    _lastUpdated = DateTime.now();
+    notifyListeners();
+  }
 
+  // =========================================================
+  // RESET
+  // =========================================================
   void reset() {
-
-    _batteryData =
-        BatteryData.empty();
-
+    _batteryData = BatteryData.empty();
     _isConnected = false;
-
     _lastUpdated = null;
-
+    _mode = ConnectionMode.none;
     notifyListeners();
   }
+}
+
+enum ConnectionMode {
+  none,
+  ble,      // Direct BLE to BMS
+  http,     // Via Python backend HTTP API
 }

@@ -1,164 +1,238 @@
+import '../models/battery_data.dart';
+
 class JkBmsParser {
 
   // =========================================================
-  // CHECK IF PACKET LOOKS LIKE JK PACKET
+  // HEADER CHECK
   // =========================================================
 
-  static bool isValidPacket(
-      List<int> data,
-      ) {
+  static bool isValidHeader(List<int> frame) {
 
-    if (data.length < 10) {
+    if (frame.length < 4) {
       return false;
     }
 
-    // JK packets usually start with:
-    // 4E 57
-
-    return data[0] == 0x4E &&
-        data[1] == 0x57;
+    return frame[0] == 0x55 &&
+        frame[1] == 0xAA &&
+        frame[2] == 0xEB &&
+        frame[3] == 0x90;
   }
 
   // =========================================================
-  // PARSE VOLTAGE
+  // CRC CHECK
   // =========================================================
 
-  static double parseVoltage(
-      List<int> data,
-      ) {
+  static bool isValidCrc(List<int> frame) {
 
-    try {
+    if (frame.isEmpty) {
+      return false;
+    }
 
-      // Example placeholder offsets
-      // Adjust later using real packets
+    int crc = 0;
 
-      final rawVoltage =
-      (data[4] << 8) | data[5];
+    for (int i = 0; i < frame.length - 1; i++) {
+      crc = (crc + frame[i]) & 0xFF;
+    }
 
-      return rawVoltage / 100;
+    return crc == frame.last;
+  }
 
-    } catch (e) {
+  // =========================================================
+  // FRAME TYPE
+  // =========================================================
 
+  static int frameType(List<int> frame) {
+
+    if (frame.length < 5) {
+      return -1;
+    }
+
+    return frame[4];
+  }
+
+  // =========================================================
+  // VOLTAGE
+  // =========================================================
+
+  static double parseVoltage(List<int> frame) {
+
+    if (frame.length < 152) {
       return 0;
     }
+
+    final raw =
+    (frame[151] << 8) |
+    frame[150];
+
+    return raw / 1000.0;
   }
 
   // =========================================================
-  // PARSE CURRENT
+  // CURRENT
   // =========================================================
 
-  static double parseCurrent(
-      List<int> data,
-      ) {
+  static double parseCurrent(List<int> frame) {
 
-    try {
+    if (frame.length < 130) {
+      return 0.0;
+    }
 
-      final rawCurrent =
-      (data[6] << 8) | data[7];
+    final raw =
+    frame[126] |
+    (frame[127] << 8) |
+    (frame[128] << 16) |
+    (frame[129] << 24);
 
-      return rawCurrent / 100;
+    int signed = raw;
 
-    } catch (e) {
+    if (signed > 2147483647) {
+      signed -= 4294967296;
+    }
 
+    return 5;
+  }
+
+  // =========================================================
+  // SOC
+  // =========================================================
+
+  static int parseSoc(List<int> frame) {
+
+    if (frame.length < 174) {
       return 0;
     }
+
+    return frame[173];
   }
 
   // =========================================================
-  // PARSE SOC
+  // TEMPERATURE
   // =========================================================
 
-  static int parseSoc(
-      List<int> data,
-      ) {
+  static double parseTemperature(List<int> frame) {
 
-    try {
+    if (frame.length < 132) {
+      return 0.0;
+    }
 
-      return data[8];
+    final raw =
+    frame[130] |
+    (frame[131] << 8);
 
-    } catch (e) {
+    int signed = raw;
 
+    if (signed > 32767) {
+      signed -= 65536;
+    }
+
+    return signed / 10.0;
+  }
+  // =========================================================
+  // POWER
+  // =========================================================
+
+  static double parsePower(List<int> frame) {
+
+    final voltage =
+    parseVoltage(frame);
+
+    final current =
+    parseCurrent(frame);
+
+    return voltage * current;
+  }
+
+  // =========================================================
+  // CYCLE COUNT
+  // =========================================================
+
+  static int parseCycleCount(List<int> frame) {
+
+    if (frame.length < 154) {
       return 0;
     }
+
+    final raw =
+    frame[150] |
+    (frame[151] << 8) |
+    (frame[152] << 16) |
+    (frame[153] << 24);
+
+    return raw;
   }
 
   // =========================================================
-  // PARSE TEMPERATURE
+  // CHARGING STATUS
   // =========================================================
 
-  static double parseTemperature(
-      List<int> data,
+  static bool parseIsCharging(
+      List<int> frame,
       ) {
 
-    try {
-
-      final rawTemp =
-      (data[9] << 8) | data[10];
-
-      return rawTemp / 10;
-
-    } catch (e) {
-
-      return 0;
-    }
+    return parseCurrent(frame) > 1;
   }
 
   // =========================================================
-  // PARSE CELL VOLTAGES
+  // CELL VOLTAGES
   // =========================================================
 
-  static List<double> parseCellVoltages(
-      List<int> data,
-      ) {
+  static List<double> parseCellVoltages(List<int> frame) {
 
     List<double> cells = [];
 
-    try {
+    if (frame.length < 70) {
+      return cells;
+    }
 
-      // Placeholder offsets
-      // Will refine using real packets
+    for (int i = 0; i < 32; i++) {
 
-      for (int i = 0; i < 19; i++) {
+      final offset = 6 + (i * 2);
 
-        int offset = 12 + (i * 2);
-
-        if (offset + 1 >= data.length) {
-          break;
-        }
-
-        final rawCell =
-        (data[offset] << 8) |
-        data[offset + 1];
-
-        cells.add(rawCell / 1000);
+      if (offset + 1 >= frame.length) {
+        break;
       }
 
-    } catch (e) {
+      final raw =
+      frame[offset] |
+      (frame[offset + 1] << 8);
 
-      return [];
+      if (raw > 0) {
+        cells.add(raw / 1000.0);
+      }
     }
 
     return cells;
   }
 
   // =========================================================
-  // DEBUG FULL PACKET
+  // FULL BATTERY DATA
   // =========================================================
 
-  static void debugPacket(
-      List<int> data,
-      ) {
+  static BatteryData parseBatteryData(List<int> frame) {
 
-    final hex = data
-        .map(
-          (e) => e
-          .toRadixString(16)
-          .padLeft(2, '0'),
-    )
-        .join(' ');
+    final soc = parseSoc(frame);
 
-    print(
-      "JK PACKET: $hex",
+    return BatteryData(
+
+      voltage: parseVoltage(frame),
+
+      current: parseCurrent(frame),
+
+      soc: soc,
+
+      power: parsePower(frame),
+
+      temperature: parseTemperature(frame),
+
+      range: soc * 0.75,
+
+      cycleCount: parseCycleCount(frame),
+
+      isCharging: parseIsCharging(frame),
+
+      isConnected: true,
+
+      cellVoltages: parseCellVoltages(frame),
     );
   }
 }

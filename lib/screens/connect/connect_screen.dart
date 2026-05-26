@@ -3,6 +3,7 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 
+import '../../main.dart';
 import '../../providers/battery_provider.dart';
 import '../../services/ble_service.dart';
 
@@ -18,29 +19,29 @@ class ConnectScreen extends StatefulWidget {
 class _ConnectScreenState
     extends State<ConnectScreen> {
 
-  // =======================================================
+  // =========================================================
   // BLE SERVICE
-  // =======================================================
+  // =========================================================
 
   late final BleService bleService;
 
-  // =======================================================
-  // DEVICES
-  // =======================================================
-
-  List<BluetoothDevice> devices = [];
-
-  // =======================================================
+  // =========================================================
   // STATES
-  // =======================================================
+  // =========================================================
 
   bool isScanning = false;
 
   bool isConnecting = false;
 
-  // =======================================================
+  // =========================================================
+  // DEVICES
+  // =========================================================
+
+  List<BluetoothDevice> devices = [];
+
+  // =========================================================
   // INIT
-  // =======================================================
+  // =========================================================
 
   @override
   void initState() {
@@ -53,27 +54,25 @@ class _ConnectScreenState
       listen: false,
     );
 
-    bleService = BleService(
-      batteryProvider: batteryProvider,
-    );
+    bleService = batteryProvider.bleService;
 
     init();
   }
 
-  // =======================================================
+  // =========================================================
   // INITIALIZE
-  // =======================================================
+  // =========================================================
 
   Future<void> init() async {
 
     await requestPermissions();
 
-    await startInitialScan();
+    await startScan();
   }
 
-  // =======================================================
-  // REQUEST PERMISSIONS
-  // =======================================================
+  // =========================================================
+  // PERMISSIONS
+  // =========================================================
 
   Future<void> requestPermissions() async {
 
@@ -88,20 +87,20 @@ class _ConnectScreenState
     ].request();
   }
 
-  // =======================================================
+  // =========================================================
   // START SCAN
-  // =======================================================
+  // =========================================================
 
-  Future<void> startInitialScan() async {
+  Future<void> startScan() async {
 
     if (isScanning) return;
-
-    debugPrint("STARTING SCAN");
 
     setState(() {
 
       isScanning = true;
     });
+
+    debugPrint("STARTING BLE SCAN");
 
     await bleService.startScan();
 
@@ -111,22 +110,22 @@ class _ConnectScreenState
 
     if (!mounted) return;
 
-    debugPrint(
-      "DEVICES FOUND: "
-          "${bleService.devices.length}",
-    );
-
     setState(() {
 
       devices = bleService.devices;
 
       isScanning = false;
     });
+
+    debugPrint(
+      "DEVICES FOUND: "
+          "${devices.length}",
+    );
   }
 
-  // =======================================================
+  // =========================================================
   // CONNECT DEVICE
-  // =======================================================
+  // =========================================================
 
   Future<void> connectDevice(
       BluetoothDevice device,
@@ -141,10 +140,10 @@ class _ConnectScreenState
 
     try {
 
-      // Stop scan before connect
+      // Stop scan before connecting
       await bleService.stopScan();
 
-      // Connect
+      // Connect BLE device
       await bleService.connect(device);
 
       if (!mounted) return;
@@ -163,10 +162,25 @@ class _ConnectScreenState
         ),
       );
 
+      // =====================================================
+      // OPEN DASHBOARD
+      // =====================================================
+
+      Navigator.pushReplacement(
+
+        context,
+
+        MaterialPageRoute(
+
+          builder: (_) =>
+          const MyHomePage(),
+        ),
+      );
+
     } catch (e) {
 
       debugPrint(
-        "CONNECT ERROR: $e",
+        "CONNECTION ERROR: $e",
       );
 
       if (!mounted) return;
@@ -179,7 +193,7 @@ class _ConnectScreenState
           backgroundColor: Colors.red,
 
           content: Text(
-            "Connection Failed: $e",
+            "Connection Failed",
           ),
         ),
       );
@@ -196,228 +210,81 @@ class _ConnectScreenState
     }
   }
 
-  // =======================================================
+  // =========================================================
   // DISPOSE
-  // =======================================================
+  // =========================================================
 
   @override
   void dispose() {
 
-    bleService.disconnect();
+    // Only stop scanning, don't disconnect!
+    bleService.stopScan();
 
     super.dispose();
   }
 
-  // =======================================================
+  // =========================================================
   // UI
-  // =======================================================
+  // =========================================================
 
   @override
   Widget build(BuildContext context) {
-
-    final batteryProvider =
-    Provider.of<BatteryProvider>(
-      context,
-    );
-
-    return Scaffold(
-
-      backgroundColor: Colors.grey[50],
-
-      appBar: AppBar(
-
-        backgroundColor: Colors.transparent,
-
-        elevation: 0,
-
-        title: const Text(
-
-          "Connect BMS",
-
-          style: TextStyle(
-
-            color: Colors.black,
-
-            fontWeight: FontWeight.bold,
-
-            fontSize: 24,
-          ),
-        ),
-
-        actions: [
-
-          // ===============================================
-          // CONNECTION STATUS
-          // ===============================================
-
-          Padding(
-
-            padding:
-            const EdgeInsets.only(
-              right: 16,
-            ),
-
-            child: Row(
-
-              children: [
-
-                Icon(
-
-                  batteryProvider
-                      .isConnected
-
-                      ? Icons
-                      .bluetooth_connected
-
-                      : Icons
-                      .bluetooth_disabled,
-
-                  color:
-                  batteryProvider
-                      .isConnected
-
-                      ? Colors.green
-
-                      : Colors.red,
-                ),
-
-                const SizedBox(width: 8),
-
-                Text(
-
-                  batteryProvider
-                      .isConnected
-
-                      ? "Connected"
-
-                      : "Disconnected",
-
-                  style: TextStyle(
-
-                    fontWeight:
-                    FontWeight.bold,
-
-                    color:
-                    batteryProvider
-                        .isConnected
-
-                        ? Colors.green
-
-                        : Colors.red,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+    return Theme(
+      data: ThemeData(
+        brightness: Brightness.light,
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple, brightness: Brightness.light),
+        cardColor: Colors.white,
       ),
-
-      body: Column(
-
-        crossAxisAlignment:
-        CrossAxisAlignment.start,
-
-        children: [
-
-          // ===============================================
-          // TITLE
-          // ===============================================
-
-          Padding(
-
-            padding:
-            const EdgeInsets.all(20),
-
-            child: Text(
-
-              "Nearby Devices",
-
-              style: TextStyle(
-
-                fontSize: 16,
-
-                color: Colors.grey[600],
-
-                fontWeight:
-                FontWeight.w600,
-              ),
+      child: Scaffold(
+        backgroundColor: Colors.grey[50],
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          title: const Text(
+            "Connect BMS",
+            style: TextStyle(
+              fontSize: 28,
+              fontWeight: FontWeight.bold,
+              color: Colors.black,
             ),
           ),
-
-          // ===============================================
-          // DEVICE LIST
-          // ===============================================
-
-          Expanded(
-
-            child: devices.isEmpty &&
-                !isScanning
-
-                ? buildEmptyState()
-
-                : ListView.builder(
-
-              padding:
-              const EdgeInsets
-                  .symmetric(
-                horizontal: 16,
-              ),
-
-              itemCount:
-              devices.length,
-
-              itemBuilder:
-                  (context, index) {
-
-                final device =
-                devices[index];
-
-                return buildDeviceCard(
-                  device,
-                );
-              },
+          actions: [
+            IconButton(
+              onPressed: startScan,
+              icon: isScanning
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                      ),
+                    )
+                  : const Icon(
+                      Icons.refresh,
+                      color: Colors.deepPurple,
+                    ),
             ),
-          ),
-        ],
-      ),
-
-      // ===============================================
-      // FLOATING ACTION BUTTON
-      // ===============================================
-
-      floatingActionButton:
-      FloatingActionButton(
-
-        backgroundColor:
-        Colors.deepPurple,
-
-        onPressed: startInitialScan,
-
-        child: isScanning
-
-            ? const Padding(
-
-          padding:
-          EdgeInsets.all(12),
-
-          child:
-          CircularProgressIndicator(
-            color: Colors.white,
-            strokeWidth: 2,
-          ),
-        )
-
-            : const Icon(
-          Icons.refresh,
-          color: Colors.white,
+          ],
         ),
+        body: devices.isEmpty && !isScanning
+            ? buildEmptyState()
+            : ListView.builder(
+                padding: const EdgeInsets.all(16),
+                itemCount: devices.length,
+                itemBuilder: (context, index) {
+                  final device = devices[index];
+                  return buildDeviceCard(
+                    device,
+                  );
+                },
+              ),
       ),
     );
   }
 
-  // =======================================================
+  // =========================================================
   // DEVICE CARD
-  // =======================================================
+  // =========================================================
 
   Widget buildDeviceCard(
       BluetoothDevice device,
@@ -434,7 +301,7 @@ class _ConnectScreenState
 
       margin:
       const EdgeInsets.only(
-        bottom: 12,
+        bottom: 14,
       ),
 
       decoration: BoxDecoration(
@@ -442,20 +309,19 @@ class _ConnectScreenState
         color: Colors.white,
 
         borderRadius:
-        BorderRadius.circular(20),
+        BorderRadius.circular(22),
 
         boxShadow: [
 
           BoxShadow(
 
             color:
-            Colors.grey.withAlpha(20),
+            Colors.grey.withAlpha(25),
 
-            spreadRadius: 2,
+            blurRadius: 10,
 
-            blurRadius: 8,
-
-            offset: const Offset(0, 4),
+            offset:
+            const Offset(0, 5),
           ),
         ],
       ),
@@ -465,18 +331,24 @@ class _ConnectScreenState
         contentPadding:
         const EdgeInsets.symmetric(
           horizontal: 20,
-          vertical: 8,
+          vertical: 10,
         ),
 
         leading: CircleAvatar(
 
+          radius: 28,
+
           backgroundColor:
           Colors.deepPurple
-              .withAlpha(25),
+              .withAlpha(20),
 
           child: const Icon(
-            Icons.electric_bike_outlined,
+
+            Icons.bluetooth,
+
             color: Colors.deepPurple,
+
+            size: 28,
           ),
         ),
 
@@ -489,7 +361,7 @@ class _ConnectScreenState
             fontWeight:
             FontWeight.bold,
 
-            fontSize: 16,
+            fontSize: 18,
           ),
         ),
 
@@ -516,13 +388,18 @@ class _ConnectScreenState
             foregroundColor:
             Colors.white,
 
-            elevation: 0,
+            padding:
+            const EdgeInsets.symmetric(
+              horizontal: 26,
+              vertical: 14,
+            ),
 
             shape:
             RoundedRectangleBorder(
+
               borderRadius:
               BorderRadius.circular(
-                12,
+                14,
               ),
             ),
           ),
@@ -550,16 +427,22 @@ class _ConnectScreenState
           )
 
               : const Text(
+
             "Connect",
+
+            style: TextStyle(
+              fontWeight:
+              FontWeight.bold,
+            ),
           ),
         ),
       ),
     );
   }
 
-  // =======================================================
+  // =========================================================
   // EMPTY STATE
-  // =======================================================
+  // =========================================================
 
   Widget buildEmptyState() {
 
@@ -574,36 +457,38 @@ class _ConnectScreenState
 
           Icon(
 
-            Icons.bluetooth_searching,
+            Icons.bluetooth_disabled,
 
-            size: 80,
+            size: 90,
 
             color: Colors.grey[300],
           ),
 
-          const SizedBox(height: 16),
+          const SizedBox(height: 20),
 
           Text(
 
-            "No devices found",
+            "No BLE Devices Found",
 
             style: TextStyle(
 
-              color: Colors.grey[500],
-
               fontSize: 18,
+
+              color: Colors.grey[600],
+
+              fontWeight:
+              FontWeight.w600,
             ),
           ),
 
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
 
           TextButton(
 
-            onPressed:
-            startInitialScan,
+            onPressed: startScan,
 
             child: const Text(
-              "Tap to refresh",
+              "Scan Again",
             ),
           ),
         ],
