@@ -10,6 +10,8 @@ class BatteryData {
 
   final int soc;
 
+  final int soh; // <--- Added SOH
+
   final double power;
 
   final double temperature;
@@ -35,6 +37,8 @@ class BatteryData {
     required this.current,
 
     required this.soc,
+
+    required this.soh, // <--- Added SOH
 
     required this.power,
 
@@ -65,6 +69,8 @@ class BatteryData {
 
       soc: 0,
 
+      soh: 100, // <--- Defaulting empty SOH to 100%
+
       power: 0,
 
       temperature: 0,
@@ -94,6 +100,8 @@ class BatteryData {
       current: 12.8,
 
       soc: 84,
+
+      soh: 96, // <--- Added demo SOH value
 
       power: 926,
 
@@ -151,6 +159,8 @@ class BatteryData {
 
     int? soc,
 
+    int? soh, // <--- Added SOH
+
     double? power,
 
     double? temperature,
@@ -176,6 +186,9 @@ class BatteryData {
 
       soc:
       soc ?? this.soc,
+
+      soh:
+      soh ?? this.soh, // <--- Added SOH
 
       power:
       power ?? this.power,

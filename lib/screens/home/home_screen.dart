@@ -12,6 +12,7 @@ class HomeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final batteryProvider = Provider.of<BatteryProvider>(context);
     final batteryData = batteryProvider.batteryData;
+    final screenHeight = MediaQuery.sizeOf(context).height;
 
     // FORCE LIGHT THEME FOR THIS SCREEN
     return Theme(
@@ -38,7 +39,7 @@ class HomeScreen extends StatelessWidget {
                     // ===================================================
                     Image.asset(
                       'lib/assets/scooty.png',
-                      height: 300,
+                      height: screenHeight * 0.35,
                     ),
 
                     // ===================================================
@@ -77,12 +78,15 @@ class HomeScreen extends StatelessWidget {
                             color: batteryProvider.isConnected ? Colors.green : Colors.red,
                           ),
                           const SizedBox(width: 10),
-                          Text(
-                            batteryProvider.isConnected ? "BMS Connected" : "BMS Disconnected",
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: batteryProvider.isConnected ? Colors.green : Colors.red,
+                          Flexible(
+                            child: Text(
+                              batteryProvider.isConnected ? "BMS Connected" : "BMS Disconnected",
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: batteryProvider.isConnected ? Colors.green : Colors.red,
+                              ),
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                         ],
@@ -94,13 +98,15 @@ class HomeScreen extends StatelessWidget {
                     // ===================================================
                     // INFO CARDS
                     // ===================================================
-                    GridView.count(
+                    GridView(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
-                      crossAxisCount: 2,
-                      crossAxisSpacing: 16,
-                      mainAxisSpacing: 16,
-                      childAspectRatio: 1.1,
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 2,
+                        crossAxisSpacing: 16,
+                        mainAxisSpacing: 16,
+                        mainAxisExtent: 130,
+                      ),
                       children: [
                         InfoCard(
                           title: 'Voltage',

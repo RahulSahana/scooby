@@ -13,11 +13,11 @@ dependencies:
     sdk: flutter
 
   cupertino_icons: ^1.0.8
-  http: ^1.1.0
   wave: ^0.2.2
   flutter_blue_plus: ^2.3.3
   permission_handler: ^12.0.1
   provider: ^6.1.2
+  shared_preferences: ^2.2.3
 
 dev_dependencies:
   flutter_test:
@@ -32,6 +32,8 @@ flutter:
 
   assets:
     - lib/assets/scooty.png
+    - lib/assets/charge_ev.png
+    - lib/assets/charge_ev_trans.png
 
 flutter_launcher_icons:
   android: true

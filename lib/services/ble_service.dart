@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 //import '../models/battery_data.dart';
 import '../parsers/jk_bms_parser.dart';
@@ -21,10 +22,18 @@ class BleService {
   });
 
   // =========================================================
+  // COMMANDS
+  // =========================================================
+
+  final JkCommandService _commandService = JkCommandService();
+
+  // =========================================================
   // BLE
   // =========================================================
 
   StreamSubscription? _scanSubscription;
+
+  StreamSubscription? _autoConnectSubscription;
 
   StreamSubscription? _notifySubscription;
 
@@ -126,17 +135,26 @@ class BleService {
   Future<void> connect(
       BluetoothDevice device,
       ) async {
+    // Avoid redundant connection attempts
+    if (connectedDevice?.remoteId == device.remoteId) {
+      debugPrint('ALREADY CONNECTED TO: ${device.remoteId}');
+      return;
+    }
 
     connectedDevice = device;
 
     try {
-
       await device.connect(
-
         license: License.free,
+        timeout: const Duration(seconds: 15),
+      );
 
-        timeout:
-        const Duration(seconds: 15),
+      final prefs =
+      await SharedPreferences.getInstance();
+
+      await prefs.setString(
+        'last_device_id',
+        device.remoteId.str,
       );
 
       debugPrint(
@@ -158,6 +176,8 @@ class BleService {
 
       rethrow;
     }
+
+
 
     // =======================================================
     // CONNECTION STATE
@@ -248,6 +268,58 @@ class BleService {
     }
   }
 
+  Future<bool> autoConnect() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedId = prefs.getString('last_device_id');
+
+      if (savedId == null) {
+        debugPrint('AUTO-CONNECT: No saved device ID found.');
+        return false;
+      }
+
+      debugPrint('AUTO-CONNECT: Searching for $savedId...');
+
+      // 1. Check if it is already connected via the system cache
+      List<BluetoothDevice> connected = await FlutterBluePlus.systemDevices([]);
+      for (var device in connected) {
+        if (device.remoteId.str == savedId) {
+          debugPrint('AUTO-CONNECT: Device already connected via system.');
+          await connect(device);
+          return true;
+        }
+      }
+
+      // 2. Start a targeted scan
+      await FlutterBluePlus.startScan(
+        timeout: const Duration(seconds: 8), // Give it 8 seconds to find the scooter
+        androidScanMode: AndroidScanMode.lowLatency,
+      );
+
+      // Wait and listen to the scan results
+      await for (final results in FlutterBluePlus.onScanResults) {
+        for (ScanResult r in results) {
+          if (r.device.remoteId.str == savedId) {
+            debugPrint('AUTO-CONNECT: Found target device!');
+            await FlutterBluePlus.stopScan();
+            await connect(r.device);
+            return true;
+          }
+        }
+        // If scan times out, the stream usually closes or stops sending results.
+        // FlutterBluePlus.isScanning will become false.
+        if (!FlutterBluePlus.isScanningNow) break;
+      }
+
+      debugPrint('AUTO-CONNECT: Device not found in range.');
+      return false;
+
+    } catch (e) {
+      debugPrint('AUTO-CONNECT ERROR: $e');
+      return false;
+    }
+  }
+
   // =========================================================
   // SETUP CHARACTERISTIC
   // =========================================================
@@ -289,42 +361,35 @@ class BleService {
         );
 
     // =======================================================
-    // COMMAND SERVICE
+    // CELL INFO REQUEST (0x96) FIRST
     // =======================================================
 
-    final commandService =
-    JkCommandService();
-
-    // =======================================================
-    // DEVICE INFO REQUEST
-    // =======================================================
-
-    await commandService
-        .sendDeviceInfoRequest(
-      characteristic,
-    );
-
-    debugPrint(
-      'DEVICE INFO REQUEST SENT',
-    );
-
-    // WAIT BEFORE CELL INFO
-
-    await Future.delayed(
-      const Duration(seconds: 1),
-    );
-
-    // =======================================================
-    // CELL INFO REQUEST
-    // =======================================================
-
-    await commandService
+    await _commandService
         .sendCellInfoRequest(
       characteristic,
     );
 
     debugPrint(
       'CELL INFO REQUEST SENT',
+    );
+
+    // WAIT BEFORE DEVICE INFO
+
+    await Future.delayed(
+      const Duration(seconds: 1),
+    );
+
+    // =======================================================
+    // DEVICE INFO REQUEST (0x97)
+    // =======================================================
+
+    await _commandService
+        .sendDeviceInfoRequest(
+      characteristic,
+    );
+
+    debugPrint(
+      'DEVICE INFO REQUEST SENT',
     );
 
     debugPrint(
@@ -350,96 +415,51 @@ class BleService {
 
     packetCount++;
 
-    final hex = chunk
-
-        .map(
-          (e) => e
-          .toRadixString(16)
-          .padLeft(2, '0'),
-    )
-
-        .join(' ');
-
-    debugPrint(
-
-      'CHUNK #$packetCount '
-
-          '[${chunk.length}B]: '
-
-          '$hex',
-    );
-
-    // =======================================================
-    // WAIT HEADER
-    // =======================================================
-
-    if (packetBuffer.length < 4) {
-      return;
+    if (kDebugMode) {
+      final hex = chunk
+          .map((e) => e.toRadixString(16).padLeft(2, '0'))
+          .join(' ');
+      debugPrint('CHUNK #$packetCount [${chunk.length}B]: $hex');
     }
 
-    // =======================================================
-    // VALID HEADER
-    // =======================================================
+    while (packetBuffer.length >= 4) {
+      // Find header at start
+      if (!_bufferStartsWithHeader()) {
+        _realignBuffer();
+        if (packetBuffer.length < 4 || !_bufferStartsWithHeader()) break;
+      }
 
-    final validHeader =
+      // Wait for up to 320 bytes or next header
+      final frameEnd = _findNextFrameEnd();
+      if (frameEnd == -1) break; // not enough data yet
 
-        packetBuffer[0] == 0x55 &&
-
-            packetBuffer[1] == 0xAA &&
-
-            packetBuffer[2] == 0xEB &&
-
-            packetBuffer[3] == 0x90;
-
-    if (!validHeader) {
-
-      debugPrint(
-        'INVALID HEADER -> REALIGN',
-      );
-
-      _realignBuffer();
-
-      return;
+      final frame = packetBuffer.sublist(0, frameEnd);
+      packetBuffer.removeRange(0, frameEnd);
+      _processFrame(frame);
     }
+  }
 
-    // =======================================================
-    // WAIT COMPLETE FRAME
-    // =======================================================
-
-    if (packetBuffer.length < 300) {
-
-      debugPrint(
-
-        'BUFFERING... '
-
-            '${packetBuffer.length}/300',
-      );
-
-      return;
+  int _findNextFrameEnd() {
+    // Look for next header after byte 4 to find true frame boundary
+    for (int i = 4; i <= packetBuffer.length - 4 && i <= 320; i++) {
+      if (packetBuffer[i] == 0x55 &&
+          packetBuffer[i + 1] == 0xAA &&
+          packetBuffer[i + 2] == 0xEB &&
+          packetBuffer[i + 3] == 0x90) {
+        return i;
+      }
     }
+    // No next header found — if buffer >= 320, take 320
+    if (packetBuffer.length >= 320) return 320;
+    return -1; // still accumulating
+  }
 
-    // =======================================================
-    // EXTRACT FRAME
-    // =======================================================
-
-    final frame =
-    packetBuffer.sublist(0, 300);
-
-    if (packetBuffer.length > 300) {
-
-      final remaining =
-      packetBuffer.sublist(300);
-
-      packetBuffer.clear();
-
-      packetBuffer.addAll(remaining);
-
-    } else {
-
-      packetBuffer.clear();
-    }
-
-    _processFrame(frame);
+  bool _bufferStartsWithHeader() {
+    if (packetBuffer.length < 4) return false;
+    return packetBuffer[0] == 0x55 &&
+        packetBuffer[1] == 0xAA &&
+        packetBuffer[2] == 0xEB &&
+        packetBuffer[3] == 0x90;
   }
 
   // =========================================================
@@ -465,7 +485,7 @@ class BleService {
         !JkBmsParser.isValidCrc(frame)) {
 
       debugPrint(
-        'CRC INVALID',
+        'INVALID FRAME',
       );
 
       return;
@@ -626,10 +646,7 @@ class BleService {
 
         try {
 
-          final commandService =
-          JkCommandService();
-
-          await commandService
+          await _commandService
               .sendCellInfoRequest(
             jkCharacteristic!,
           );
@@ -681,6 +698,9 @@ class BleService {
       pollingTimer?.cancel();
 
       pollingTimer = null;
+
+      await _autoConnectSubscription?.cancel();
+      _autoConnectSubscription = null;
 
       await _notifySubscription?.cancel();
 

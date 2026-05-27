@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:wave/wave.dart';
-import 'package:wave/config.dart';
 
 import '../../providers/battery_provider.dart';
 
@@ -11,1020 +9,391 @@ class ChargeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final battery = context.watch<BatteryProvider>().batteryData;
-    final bool isCharging = battery.current > 0;
+    final double fillPercentage = battery.soc / 100.0;
 
-    // FORCE DARK THEME FOR CHARGE SCREEN
+    // ===================================================
+    // STATE LOGIC (Determined by Current)
+    // ===================================================
+    String stateText;
+    Color stateColor;
+    String powerLabel;
+
+    if (battery.current > 0) {
+      stateText = 'CHARGING';
+      stateColor = const Color(0xFF00C853); // Ather Green
+      powerLabel = 'Charging Power';
+    } else if (battery.current < 0) {
+      stateText = 'WORKING';
+      stateColor = const Color(0xFFFF9800); // Orange
+      powerLabel = 'Power Draw';
+    } else {
+      stateText = 'IDLE';
+      stateColor = const Color(0xFF00BFFF); // Sky Blue
+      powerLabel = 'Power';
+    }
+
     return Theme(
       data: ThemeData(
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF0B1020),
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.deepPurple,
-          brightness: Brightness.dark,
-        ),
+        brightness: Brightness.light,
+        scaffoldBackgroundColor: const Color(0xFFF9F9F9),
+        fontFamily: 'Roboto',
       ),
       child: Scaffold(
-        backgroundColor: const Color(0xFF0B1020),
+        backgroundColor: const Color(0xFFF9F9F9),
         body: SafeArea(
+          // Wrap everything in a scroll view to allow cards below
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
 
-        child: SingleChildScrollView(
+                // ===================================================
+                // HEADER
+                // ===================================================
 
-          padding: const EdgeInsets.all(20),
 
-          child: Column(
+                const Divider(color: Color(0xFFE0E0E0), height: 1),
 
-            crossAxisAlignment:
-            CrossAxisAlignment.start,
+                const SizedBox(height: 30),
 
-            children: [
-
-              // ===================================================
-              // HEADER
-              // ===================================================
-
-              Row(
-
-                mainAxisAlignment:
-                MainAxisAlignment.spaceBetween,
-
-                children: [
-
-                  Column(
-
-                    crossAxisAlignment:
-                    CrossAxisAlignment.start,
-
-                    children: const [
-
-                      Text(
-                        'Charging',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 34,
-                          fontWeight: FontWeight.bold,
-                        ),
+                // ===================================================
+                // DYNAMIC STATS (Color and Text changes based on state)
+                // ===================================================
+                Column(
+                  children: [
+                    Text(
+                      stateText, // Changes to CHARGING, WORKING, or IDLE
+                      style: TextStyle(
+                        color: stateColor, // Changes dynamically
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.5,
                       ),
+                    ),
 
-                      SizedBox(height: 6),
+                    const SizedBox(height: 8),
 
-                      Text(
-                        'Battery charging efficiently ⚡',
-                        style: TextStyle(
-                          color: Colors.white70,
-                          fontSize: 14,
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic,
+                      children: [
+                        Text(
+                          '${(battery.soc * 0.85).toStringAsFixed(0)}',
+                          style: const TextStyle(
+                            color: Color(0xFF4A4A4A),
+                            fontSize: 64,
+                            fontWeight: FontWeight.w300,
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-
-                  if (isCharging)
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF8B5CF6).withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(18),
-                        border: Border.all(
-                          color: const Color(0xFF8B5CF6).withOpacity(0.3),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'km',
+                          style: TextStyle(
+                            color: Color(0xFF4A4A4A),
+                            fontSize: 32,
+                            fontWeight: FontWeight.w300,
+                          ),
                         ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
+                      ],
+                    ),
+
+                    const SizedBox(height: 12),
+
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.bolt,
+                          color: stateColor, // Bolt matches state color
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        const Icon(
+                          Icons.battery_4_bar_outlined,
+                          color: Color(0xFF4A4A4A),
+                          size: 20,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${battery.soc}%',
+                          style: const TextStyle(
+                            color: Color(0xFF4A4A4A),
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 30),
+
+                // ===================================================
+                // TIME / ETA ROW
+                // ===================================================
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 40),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      Column(
                         children: [
-                          const Text(
-                            'ETA',
-                            style: TextStyle(
-                              color: Color(0xFFB794F4),
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
+                          Text(
+                            TimeOfDay.now().format(context),
+                            style: const TextStyle(
+                              color: Color(0xFF4A4A4A),
+                              fontSize: 16,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
+                          const SizedBox(height: 4),
                           Text(
-                            TimeOfDay.fromDateTime(
-                              DateTime.now().add(
-                                Duration(minutes: ((100 - battery.soc) * 3).toInt()),
-                              ),
-                            ).format(context).toLowerCase(),
+                            '${(battery.soc * 0.85).toStringAsFixed(0)} km range',
                             style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF9B9B9B),
+                              fontSize: 14,
                             ),
                           ),
                         ],
                       ),
-                    ),
-                ],
-              ),
 
-              const SizedBox(height: 40),
-
-              // ===================================================
-              // CHARGING RING
-              // ===================================================
-
-              Center(
-
-                child: Stack(
-
-                  alignment: Alignment.center,
-
-                  children: [
-
-                    SizedBox(
-
-                      width: 260,
-                      height: 260,
-
-                      child: CircularProgressIndicator(
-
-                        value: battery.soc / 100,
-
-                        strokeWidth: 16,
-
-                        backgroundColor:
-                        Colors.white10,
-
-                        valueColor:
-                        const AlwaysStoppedAnimation(
-                          Color(0xFF8B5CF6),
+                      Container(
+                        width: 4,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: stateColor, // Dot matches state color
+                          shape: BoxShape.circle,
                         ),
                       ),
-                    ),
 
-                    Column(
-
-                      children: [
-
-                        Text(
-                          '${battery.soc}%',
-
-                          style: const TextStyle(
-
-                            color: Colors.white,
-
-                            fontSize: 58,
-
-                            fontWeight:
-                            FontWeight.bold,
+                      Column(
+                        children: [
+                          Text(
+                            battery.soc < 80
+                                ? TimeOfDay.fromDateTime(
+                              DateTime.now().add(Duration(minutes: ((80 - battery.soc) * 3).toInt())),
+                            ).format(context)
+                                : TimeOfDay.fromDateTime(
+                              DateTime.now().add(Duration(minutes: ((100 - battery.soc) * 3).toInt())),
+                            ).format(context),
+                            style: const TextStyle(
+                              color: Color(0xFF4A4A4A),
+                              fontSize: 16,
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
-                        ),
-
-                        const SizedBox(height: 8),
-
-                        Text(
-
-                          isCharging
-                              ? 'Charging'
-                              : 'Idle',
-
-                          style: const TextStyle(
-
-                            color: Color(0xFFB794F4),
-
-                            fontSize: 18,
+                          const SizedBox(height: 4),
+                          Text(
+                            battery.soc < 80 ? '80% charge' : '100% charge',
+                            style: const TextStyle(
+                              color: Color(0xFF9B9B9B),
+                              fontSize: 14,
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 36),
-
-              // ===================================================
-              // LIVE STATS
-              // ===================================================
-
-              Row(
-
-                mainAxisAlignment:
-                MainAxisAlignment.spaceAround,
-
-                children: [
-
-                  _TopStat(
-
-                    title: 'Voltage',
-
-                    value:
-                    '${battery.voltage.toStringAsFixed(1)}V',
-                  ),
-
-                  _TopStat(
-
-                    title: 'Current',
-
-                    value:
-                    '${battery.current.toStringAsFixed(1)}A',
-                  ),
-
-                  _TopStat(
-
-                    title: 'Power',
-
-                    value:
-                    '${battery.power.toStringAsFixed(0)}W',
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 30),
-
-              // ===================================================
-              // ETA CARD
-              // ===================================================
-
-              Container(
-
-                padding:
-                const EdgeInsets.all(20),
-
-                decoration: BoxDecoration(
-
-                  gradient: const LinearGradient(
-
-                    begin: Alignment.topLeft,
-
-                    end: Alignment.bottomRight,
-
-                    colors: [
-
-                      Color(0xFF161B33),
-
-                      Color(0xFF1D2547),
+                        ],
+                      ),
                     ],
                   ),
-
-                  borderRadius:
-                  BorderRadius.circular(26),
-
-                  border: Border.all(
-                    color: Colors.white12,
-                  ),
                 ),
 
-                child: Column(
+                const SizedBox(height: 30),
 
-                  crossAxisAlignment:
-                  CrossAxisAlignment.start,
+                // ===================================================
+                // SCOOTER FILL ANIMATION (Fixed height for scrolling)
+                // ===================================================
+                SizedBox(
+                  height: 380, // Fixed height so the page knows how to scroll below it
+                  child: Stack(
+                    alignment: Alignment.bottomCenter,
+                    children: [
+                      // 1. Faded Outline
+                      Opacity(
+                        opacity: 0.99,
+                        child: Image.asset(
+                          'lib/assets/charge_ev.png',
+                          fit: BoxFit.contain,
+                        ),
+                      ),
 
-                  children: [
-
-                    Row(
-
-                      mainAxisAlignment:
-                      MainAxisAlignment.spaceBetween,
-
-                      children: const [
-
-                        Text(
-
-                          'Estimated Full Charge',
-
-                          style: TextStyle(
-
-                            color: Colors.white70,
-
-                            fontSize: 14,
+                      // 2. Dynamic Color Fill Layer
+                      ClipRect(
+                        child: Align(
+                          alignment: Alignment.bottomCenter,
+                          heightFactor: fillPercentage,
+                          child: ColorFiltered(
+                            colorFilter: ColorFilter.mode(
+                              stateColor, // Fill color changes based on state!
+                              BlendMode.srcIn,
+                            ),
+                            child: Image.asset(
+                              'lib/assets/charge_ev.png',
+                              fit: BoxFit.contain,
+                            ),
                           ),
                         ),
-
-                        Icon(
-
-                          Icons.bolt,
-
-                          color: Color(0xFF8B5CF6),
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 18),
-
-                    Text(
-
-                      isCharging
-                          ? (() {
-                              final totalMinutes = ((100 - battery.soc) * 3).toInt();
-                              final hours = totalMinutes ~/ 60;
-                              final minutes = totalMinutes % 60;
-                              if (hours > 0) {
-                                return '$hours hrs $minutes min remaining';
-                              } else {
-                                return '$minutes min remaining';
-                              }
-                            })()
-                          : 'Not Charging',
-
-                      style: const TextStyle(
-
-                        color: Colors.white,
-
-                        fontSize: 30,
-
-                        fontWeight:
-                        FontWeight.bold,
                       ),
-                    ),
 
-                    const SizedBox(height: 22),
-
-                    SizedBox(
-
-                      height: 24,
-
-                      child: ClipRRect(
-
-                        borderRadius:
-                        BorderRadius.circular(20),
-
-                        child: Stack(
-
-                          children: [
-
-                            // BACKGROUND
-
-                            Container(
-                              color: Colors.white10,
-                            ),
-
-                            // WAVE
-
-                            FractionallySizedBox(
-
-                              widthFactor:
-                              battery.soc / 100,
-
-                              child: WaveWidget(
-
-                                config: CustomConfig(
-
-                                  gradients: [
-
-                                    [
-                                      const Color(0xFF7C3AED),
-                                      const Color(0xFFA855F7),
-                                    ],
-
-                                    [
-                                      const Color(0xFF8B5CF6),
-                                      const Color(0xFFC084FC),
-                                    ],
-                                  ],
-
-                                  durations: [
-                                    3500,
-                                    19440,
-                                  ],
-
-                                  heightPercentages: [
-                                    0.20,
-                                    0.23,
-                                  ],
-
-                                  blur: const MaskFilter.blur(
-                                    BlurStyle.solid,
-                                    2,
-                                  ),
-                                ),
-
-                                waveAmplitude: 4,
-
-                                size: const Size(
-                                  double.infinity,
-                                  double.infinity,
-                                ),
-                              ),
-                            ),
-                          ],
+                      // 3. Sharp Top Outline
+                      ClipRect(
+                        child: Align(
+                          alignment: Alignment.bottomCenter,
+                          heightFactor: fillPercentage,
+                          child: Image.asset(
+                            'lib/assets/charge_ev_trans.png',
+                            fit: BoxFit.contain,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 24),
-
-              // ===================================================
-              // POWER + TEMP
-              // ===================================================
-
-              Row(
-
-                children: [
-
-                  Expanded(
-
-                    child: _InfoCard(
-
-                      title: 'Charging Power',
-
-                      value:
-                      '${battery.power.toStringAsFixed(0)}W',
-
-                      icon: Icons.bolt,
-                    ),
+                    ],
                   ),
+                ),
 
-                  const SizedBox(width: 16),
+                // ===================================================
+                // INFO CARDS (Scrollable area)
+                // ===================================================
+                Padding(
+                  padding: const EdgeInsets.all(24.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'BATTERY VITALS',
+                        style: TextStyle(
+                          color: Color(0xFF9B9B9B),
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
 
-                  Expanded(
+                      // Data Row 1
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _LightInfoCard(
+                              title: powerLabel,
+                              value: '${battery.power.abs().toStringAsFixed(0)} W',
+                              icon: Icons.flash_on,
+                              iconColor: stateColor,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: _LightInfoCard(
+                              title: 'Current',
+                              value: '${battery.current.abs().toStringAsFixed(1)} A',
+                              icon: Icons.electric_meter,
+                              iconColor: const Color(0xFF4A4A4A),
+                            ),
+                          ),
+                        ],
+                      ),
 
-                    child: _InfoCard(
+                      const SizedBox(height: 16),
 
-                      title: 'Battery Temp',
+                      // Data Row 2
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _LightInfoCard(
+                              title: 'Health (SOH)',
+                              // Dynamically calling SOH and formatting it to remove decimals
+                              value: '${battery.soh.toStringAsFixed(0)}%',
+                              icon: Icons.health_and_safety,
+                              iconColor: const Color(0xFF00C853),
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: _LightInfoCard(
+                              title: 'Charge Cycles',
+                              value: '${battery.cycleCount}',
+                              icon: Icons.autorenew,
+                              iconColor: const Color(0xFF00BFFF),
+                            ),
+                          ),
+                        ],
+                      ),
 
-                      value:
-                      '${battery.temperature.toStringAsFixed(1)}°C',
-
-                      icon: Icons.thermostat,
-                    ),
+                      // Extra padding for the bottom navigation bar
+                      const SizedBox(height: 40),
+                    ],
                   ),
-                ],
-              ),
-
-              const SizedBox(height: 24),
-
-              // ===================================================
-              // SESSION CARD
-              // ===================================================
-
-              _GlassCard(
-
-                child: Column(
-
-                  crossAxisAlignment:
-                  CrossAxisAlignment.start,
-
-                  children: [
-
-                    const Text(
-
-                      'Charging Session',
-
-                      style: TextStyle(
-
-                        color: Colors.white,
-
-                        fontSize: 22,
-
-                        fontWeight:
-                        FontWeight.bold,
-                      ),
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    _SessionRow(
-                      title: 'Started at',
-                      value: '8:42 PM',
-                    ),
-
-                    const SizedBox(height: 14),
-
-                    _SessionRow(
-                      title: 'Energy Added',
-                      value: '2.8 kWh',
-                    ),
-
-                    const SizedBox(height: 14),
-
-                    _SessionRow(
-                      title: 'Added Range',
-                      value:
-                      '+${(battery.soc * 0.75).toStringAsFixed(0)} km',
-                    ),
-                  ],
                 ),
-              ),
-
-              const SizedBox(height: 24),
-
-              // ===================================================
-              // LAST CHARGE
-              // ===================================================
-
-              _GlassCard(
-
-                child: Column(
-
-                  crossAxisAlignment:
-                  CrossAxisAlignment.start,
-
-                  children: const [
-
-                    Text(
-
-                      'Last Full Charge',
-
-                      style: TextStyle(
-
-                        color: Colors.white,
-
-                        fontSize: 22,
-
-                        fontWeight:
-                        FontWeight.bold,
-                      ),
-                    ),
-
-                    SizedBox(height: 18),
-
-                    Text(
-
-                      'Yesterday • 11:18 PM',
-
-                      style: TextStyle(
-
-                        color: Colors.white70,
-
-                        fontSize: 16,
-                      ),
-                    ),
-
-                    SizedBox(height: 16),
-
-                    Text(
-
-                      '63% → 100%   •   2h 11m',
-
-                      style: TextStyle(
-
-                        color: Color(0xFFB794F4),
-
-                        fontSize: 16,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 24),
-
-              // ===================================================
-              // BATTERY HEALTH
-              // ===================================================
-
-              _GlassCard(
-
-                child: Column(
-
-                  crossAxisAlignment:
-                  CrossAxisAlignment.start,
-
-                  children: [
-
-                    const Text(
-
-                      'Battery Health',
-
-                      style: TextStyle(
-
-                        color: Colors.white,
-
-                        fontSize: 22,
-
-                        fontWeight:
-                        FontWeight.bold,
-                      ),
-                    ),
-
-                    const SizedBox(height: 24),
-
-                    Row(
-
-                      mainAxisAlignment:
-                      MainAxisAlignment.spaceBetween,
-
-                      children: [
-
-                        _HealthItem(
-                          title: 'SOH',
-                          value: '96%',
-                        ),
-
-                        _HealthItem(
-                          title: 'Cycles',
-                          value:
-                          '${battery.cycleCount}',
-                        ),
-
-                        _HealthItem(
-                          title: 'Status',
-                          value: 'Good',
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 24),
-
-              // ===================================================
-              // CELL VOLTAGES
-              // ===================================================
-
-              _GlassCard(
-
-                child: Column(
-
-                  crossAxisAlignment:
-                  CrossAxisAlignment.start,
-
-                  children: [
-
-                    const Text(
-
-                      'Cell Voltages',
-
-                      style: TextStyle(
-
-                        color: Colors.white,
-
-                        fontSize: 22,
-
-                        fontWeight:
-                        FontWeight.bold,
-                      ),
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    Wrap(
-
-                      spacing: 10,
-
-                      runSpacing: 10,
-
-                      children: battery.cellVoltages
-                          .asMap()
-                          .entries
-                          .map(
-
-                            (entry) {
-
-                          final index =
-                              entry.key + 1;
-
-                          final voltage =
-                              entry.value;
-
-                          return Container(
-
-                            padding:
-                            const EdgeInsets.symmetric(
-
-                              horizontal: 14,
-
-                              vertical: 10,
-                            ),
-
-                            decoration: BoxDecoration(
-
-                              color: Colors.white10,
-
-                              borderRadius:
-                              BorderRadius.circular(14),
-                            ),
-
-                            child: Text(
-
-                              'C$index ${voltage.toStringAsFixed(3)}V',
-
-                              style: const TextStyle(
-
-                                color: Colors.white,
-
-                                fontSize: 14,
-                              ),
-                            ),
-                          );
-                        },
-                      ).toList(),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 40),
-            ],
+              ],
+            ),
           ),
         ),
       ),
-
-      ));
-  }
-}
-
-// =======================================================
-// TOP STAT
-// =======================================================
-
-class _TopStat extends StatelessWidget {
-
-  final String title;
-
-  final String value;
-
-  const _TopStat({
-
-    required this.title,
-
-    required this.value,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-
-    return Column(
-
-      children: [
-
-        Text(
-
-          value,
-
-          style: const TextStyle(
-
-            color: Colors.white,
-
-            fontSize: 28,
-
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-
-        const SizedBox(height: 6),
-
-        Text(
-
-          title,
-
-          style: const TextStyle(
-
-            color: Colors.white54,
-
-            fontSize: 14,
-          ),
-        ),
-      ],
     );
   }
 }
 
 // =======================================================
-// INFO CARD
+// LIGHT THEME INFO CARD
 // =======================================================
-
-class _InfoCard extends StatelessWidget {
-
+class _LightInfoCard extends StatelessWidget {
   final String title;
-
   final String value;
-
   final IconData icon;
+  final Color iconColor;
 
-  const _InfoCard({
-
+  const _LightInfoCard({
     required this.title,
-
     required this.value,
-
     required this.icon,
+    required this.iconColor,
   });
 
   @override
   Widget build(BuildContext context) {
-
     return Container(
-
-      padding: const EdgeInsets.all(20),
-
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-
-        gradient: const LinearGradient(
-
-          colors: [
-
-            Color(0xFF151A32),
-
-            Color(0xFF1D2545),
-          ],
-        ),
-
-        borderRadius:
-        BorderRadius.circular(24),
-
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: Colors.white10,
+          color: Colors.black.withOpacity(0.04), // Very faint border
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.02), // Very soft shadow
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
-
       child: Column(
-
-        crossAxisAlignment:
-        CrossAxisAlignment.start,
-
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-
           Icon(
             icon,
-            color: const Color(0xFFB794F4),
+            color: iconColor,
+            size: 24,
           ),
-
-          const SizedBox(height: 18),
-
+          const SizedBox(height: 12),
           Text(
-
-            title,
-
+            value,
             style: const TextStyle(
-
-              color: Colors.white70,
-
-              fontSize: 14,
+              color: Color(0xFF4A4A4A),
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
             ),
           ),
-
-          const SizedBox(height: 10),
-
+          const SizedBox(height: 4),
           Text(
-
-            value,
-
+            title,
             style: const TextStyle(
-
-              color: Colors.white,
-
-              fontSize: 28,
-
-              fontWeight: FontWeight.bold,
+              color: Color(0xFF9B9B9B),
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
             ),
           ),
         ],
       ),
-    );
-  }
-}
-
-// =======================================================
-// GLASS CARD
-// =======================================================
-
-class _GlassCard extends StatelessWidget {
-
-  final Widget child;
-
-  const _GlassCard({
-
-    required this.child,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-
-    return Container(
-
-      width: double.infinity,
-
-      padding: const EdgeInsets.all(22),
-
-      decoration: BoxDecoration(
-
-        gradient: const LinearGradient(
-
-          colors: [
-
-            Color(0xFF151A32),
-
-            Color(0xFF1D2545),
-          ],
-        ),
-
-        borderRadius:
-        BorderRadius.circular(28),
-
-        border: Border.all(
-          color: Colors.white10,
-        ),
-      ),
-
-      child: child,
-    );
-  }
-}
-
-// =======================================================
-// SESSION ROW
-// =======================================================
-
-class _SessionRow extends StatelessWidget {
-
-  final String title;
-
-  final String value;
-
-  const _SessionRow({
-
-    required this.title,
-
-    required this.value,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-
-    return Row(
-
-      mainAxisAlignment:
-      MainAxisAlignment.spaceBetween,
-
-      children: [
-
-        Text(
-
-          title,
-
-          style: const TextStyle(
-
-            color: Colors.white70,
-
-            fontSize: 15,
-          ),
-        ),
-
-        Text(
-
-          value,
-
-          style: const TextStyle(
-
-            color: Color(0xFFB794F4),
-
-            fontSize: 16,
-
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-// =======================================================
-// HEALTH ITEM
-// =======================================================
-
-class _HealthItem extends StatelessWidget {
-
-  final String title;
-
-  final String value;
-
-  const _HealthItem({
-
-    required this.title,
-
-    required this.value,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-
-    return Column(
-
-      children: [
-
-        Text(
-
-          title,
-
-          style: const TextStyle(
-
-            color: Colors.white54,
-
-            fontSize: 14,
-          ),
-        ),
-
-        const SizedBox(height: 8),
-
-        Text(
-
-          value,
-
-          style: const TextStyle(
-
-            color: Color(0xFFB794F4),
-
-            fontSize: 24,
-
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ],
     );
   }
 }
