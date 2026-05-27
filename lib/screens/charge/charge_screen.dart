@@ -150,7 +150,7 @@ class ChargeScreen extends StatelessWidget {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            '${(battery.soc * 0.85).toStringAsFixed(0)} km range',
+                            '${(battery.soc * 0.75).toStringAsFixed(0)} km range',
                             style: const TextStyle(
                               color: Color(0xFF9B9B9B),
                               fontSize: 14,
