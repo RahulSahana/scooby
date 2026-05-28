@@ -1,4 +1,4 @@
-import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 
 import '../models/battery_data.dart';
 
@@ -16,8 +16,8 @@ class JkBmsParser {
   static const List<int> _frameHeader = [0x55, 0xAA, 0xEB, 0x90];
 
   static const int _frameTypeCell     = 0x02;
-  static const int _frameTypeSettings = 0x01;
-  static const int _frameTypeDevice   = 0x03;
+  // static const int _frameTypeSettings = 0x01;
+  // static const int _frameTypeDevice   = 0x03;
 
   static const int _minFrameLength    = 300;
   static const int _maxFrameLength    = 320;
@@ -44,9 +44,9 @@ class JkBmsParser {
   static const int _offChargeMosfet       = 198;  // uint8,  0=off 1=on
   static const int _offDischargeMosfet    = 199;  // uint8,  0=off 1=on
   static const int _offHeatingStatus      = 215;  // uint8,  0=off 1=on
-  static const int _offTempSensor3        = 258;  // int16,  coeff 0.1 °C
-  static const int _offTempSensor4        = 256;  // int16,  coeff 0.1 °C
-  static const int _offTempSensor5        = 254;  // int16,  coeff 0.1 °C
+  // static const int _offTempSensor3        = 258;  // int16,  coeff 0.1 °C
+  // static const int _offTempSensor4        = 256;  // int16,  coeff 0.1 °C
+  // static const int _offTempSensor5        = 254;  // int16,  coeff 0.1 °C
 
   /// Empirically calibrated range coefficient for this scooter.
   /// Approximately 0.75 km per 1 % SOC under typical riding conditions.
@@ -147,6 +147,26 @@ class JkBmsParser {
   // =========================================================
   // TEMPERATURE SENSOR 1  (bytes 162–163, int16, coeff 0.1)
   // =========================================================
+
+  static void debugTemperatures(List<int> frame) {
+    if (frame.length < 168) {
+      debugPrint("Frame too short for temp debug: ${frame.length}");
+      return;
+    }
+
+    debugPrint("=== TEMP BYTE DUMP ===");
+    // We will scan from byte 140 to 166 in pairs of 2
+    for (int i = 140; i <= 166; i += 2) {
+      final rawInt16 = _bd(frame).getInt16(i, Endian.little);
+      final calculatedTemp = rawInt16 / 10.0;
+
+      final hex1 = frame[i].toRadixString(16).padLeft(2, '0').toUpperCase();
+      final hex2 = frame[i+1].toRadixString(16).padLeft(2, '0').toUpperCase();
+
+      debugPrint("Offset $i: [ $hex1 $hex2 ] -> Temp: $calculatedTemp °C");
+    }
+    debugPrint("======================");
+  }
 
   static double parseTemperature(List<int> frame) {
     if (frame.length < _offTempSensor1 + 2) return 0.0;

@@ -40,6 +40,7 @@ class BatteryProvider extends ChangeNotifier {
   double get voltage => _batteryData.voltage;
   double get current => _batteryData.current;
   int get soc => _batteryData.soc;
+  int get soh => _batteryData.soh;
   double get temperature => _batteryData.temperature;
   double get power => _batteryData.power;
   int get cycleCount => _batteryData.cycleCount;
@@ -81,6 +82,7 @@ class BatteryProvider extends ChangeNotifier {
     double? voltage,
     double? current,
     int? soc,
+    int? soh,
     double? power,
     double? temperature,
     double? range,
@@ -95,6 +97,7 @@ class BatteryProvider extends ChangeNotifier {
       voltage: voltage,
       current: current,
       soc: soc,
+      soh: soh,
       power: power,
       temperature: temperature,
       range: range,

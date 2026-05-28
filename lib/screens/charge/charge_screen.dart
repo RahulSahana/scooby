@@ -79,7 +79,7 @@ class ChargeScreen extends StatelessWidget {
                       textBaseline: TextBaseline.alphabetic,
                       children: [
                         Text(
-                          '${(battery.soc * 0.85).toStringAsFixed(0)}',
+                          '${(battery.range).toStringAsFixed(0)}',
                           style: const TextStyle(
                             color: Color(0xFF4A4A4A),
                             fontSize: 64,
@@ -150,7 +150,7 @@ class ChargeScreen extends StatelessWidget {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            '${(battery.soc * 0.75).toStringAsFixed(0)} km range',
+                            '${(battery.range).toStringAsFixed(0)} km range',
                             style: const TextStyle(
                               color: Color(0xFF9B9B9B),
                               fontSize: 14,
@@ -356,11 +356,11 @@ class _LightInfoCard extends StatelessWidget {
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: Colors.black.withOpacity(0.04), // Very faint border
+          color: Colors.black.withValues(alpha: 0.04), // Very faint border
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.02), // Very soft shadow
+            color: Colors.black.withValues(alpha: 0.02), // Very soft shadow
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),

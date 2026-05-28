@@ -508,6 +508,7 @@ class BleService {
 
     if (frameType == 0x02) {
 
+      JkBmsParser.debugTemperatures(frame);
       final batteryData =
       JkBmsParser.parseBatteryData(frame);
 
