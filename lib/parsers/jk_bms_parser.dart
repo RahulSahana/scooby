@@ -168,9 +168,25 @@ class JkBmsParser {
     debugPrint("======================");
   }
 
+  // =========================================================
+  // TEMPERATURE SENSORS (With Disconnect Fallback)
+  // =========================================================
+
   static double parseTemperature(List<int> frame) {
     if (frame.length < _offTempSensor1 + 2) return 0.0;
-    return _bd(frame).getInt16(_offTempSensor1, Endian.little) / 10.0;
+
+    // Grab all three possible temperatures
+    double temp1 = _bd(frame).getInt16(_offTempSensor1, Endian.little) / 10.0;
+    double temp2 = _bd(frame).getInt16(_offTempSensor2, Endian.little) / 10.0;
+    double mosTemp = _bd(frame).getInt16(_offPowerTubeTemp, Endian.little) / 10.0;
+
+    // JK BMS returns -200.0 if a physical sensor probe is unplugged.
+    // We check which ones are actually valid (greater than -50°C)
+    if (temp1 > -50.0) return temp1;
+    if (temp2 > -50.0) return temp2;
+    if (mosTemp > -50.0) return mosTemp;
+
+    return 0.0; // Fallback if absolutely everything is broken
   }
 
   // =========================================================
@@ -408,8 +424,9 @@ class JkBmsParser {
       temperature:  parseTemperature(frame),
       range:        soc * _kmPerSocPercent,
       cycleCount:   parseCycleCount(frame),
-      soh:          parseSoh(frame), // <--- Plugged in here!
+      soh:          parseSoh(frame),
       isCharging:   parseIsCharging(frame),
+      isDischarging: parseDischargeMosfet(frame),
       isConnected:  true,
       cellVoltages: parseCellVoltages(frame),
     );

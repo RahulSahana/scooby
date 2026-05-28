@@ -547,6 +547,9 @@ class BleService {
         isCharging:
         batteryData.isCharging,
 
+        isDischarging:
+        batteryData.isDischarging,
+
         power:
         batteryData.power,
 
@@ -574,6 +577,53 @@ class BleService {
       debugPrint(
         'SETTINGS FRAME RECEIVED',
       );
+    }
+  }
+
+  // =========================================================
+  // CONTROL METHODS
+  // =========================================================
+
+  Future<void> toggleChargeMosfet(bool enable) async {
+    if (jkCharacteristic == null) {
+      debugPrint('CANNOT TOGGLE: No characteristic found.');
+      return;
+    }
+
+    debugPrint('INITIATING WRITE SEQUENCE FOR MOSFET: $enable');
+
+    try {
+      // 1. Send Password Handshake
+      await _commandService.sendAuthorization(jkCharacteristic!);
+
+      // Give the BMS a tiny window to process the authorization
+      await Future.delayed(const Duration(milliseconds: 200));
+
+      // 2. Send the actual toggle command
+      await _commandService.setChargeMosfet(jkCharacteristic!, enable);
+
+      // 3. Force an immediate telemetry read so the UI updates instantly
+      await Future.delayed(const Duration(milliseconds: 300));
+      await _commandService.sendCellInfoRequest(jkCharacteristic!);
+
+    } catch (e) {
+      debugPrint('WRITE SEQUENCE FAILED: $e');
+    }
+  }
+
+  Future<void> toggleDischargeMosfet(bool enable) async {
+    if (jkCharacteristic == null) return;
+
+    try {
+      await _commandService.sendAuthorization(jkCharacteristic!);
+      await Future.delayed(const Duration(milliseconds: 200));
+
+      await _commandService.setDischargeMosfet(jkCharacteristic!, enable);
+
+      await Future.delayed(const Duration(milliseconds: 300));
+      await _commandService.sendCellInfoRequest(jkCharacteristic!);
+    } catch (e) {
+      debugPrint('WRITE SEQUENCE FAILED: $e');
     }
   }
 

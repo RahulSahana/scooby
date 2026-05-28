@@ -22,6 +22,8 @@ class BatteryData {
 
   final bool isCharging;
 
+  final bool isDischarging;
+
   final bool isConnected;
 
   final List<double> cellVoltages;
@@ -49,6 +51,8 @@ class BatteryData {
     required this.cycleCount,
 
     required this.isCharging,
+
+    required this.isDischarging,
 
     required this.isConnected,
 
@@ -81,6 +85,8 @@ class BatteryData {
 
       isCharging: false,
 
+      isDischarging: false,
+
       isConnected: false,
 
       cellVoltages: [],
@@ -112,6 +118,8 @@ class BatteryData {
       cycleCount: 214,
 
       isCharging: false,
+
+      isDischarging: true,
 
       isConnected: true,
 
@@ -171,6 +179,8 @@ class BatteryData {
 
     bool? isCharging,
 
+    bool? isDischarging,
+
     bool? isConnected,
 
     List<double>? cellVoltages,
@@ -205,6 +215,9 @@ class BatteryData {
 
       isCharging:
       isCharging ?? this.isCharging,
+
+      isDischarging:
+      isDischarging ?? this.isDischarging,
 
       isConnected:
       isConnected ?? this.isConnected,

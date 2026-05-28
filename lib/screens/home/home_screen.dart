@@ -34,12 +34,19 @@ class HomeScreen extends StatelessWidget {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.start,
                   children: [
-                    // ===================================================
-                    // SCOOTER IMAGE
-                    // ===================================================
-                    Image.asset(
-                      'lib/assets/scooty.png',
-                      height: screenHeight * 0.35,
+                    // 1. THE SCOOTER MEDIA LAYER
+                    Center(
+                      child: Image.asset(
+                        // If current is pulling more than 0.6A (moving), show the GIF.
+                        // Otherwise, show your static parked scooter image.
+                        batteryData.current <= -0.6
+                            ? 'lib/assets/moving_scooty.gif'
+                            : 'lib/assets/scooty.png',
+                        fit: BoxFit.contain,
+                        // Optional: Give it a fixed height so the UI doesn't jump
+                        // if the GIF and PNG have different dimensions
+                        height: 250,
+                      ),
                     ),
 
                     // ===================================================
@@ -88,6 +95,76 @@ class HomeScreen extends StatelessWidget {
                               ),
                               overflow: TextOverflow.ellipsis,
                             ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    // ===================================================
+                    // MOTOR POWER (DISCHARGE) CONTROL CARD
+                    // ===================================================
+                    _GlassCard(
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: batteryData.isDischarging
+                                      ? Colors.blue.withValues(alpha: 0.2)
+                                      : Colors.redAccent.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                child: Icon(
+                                  Icons.electric_scooter,
+                                  color: batteryData.isDischarging ? Colors.blue : Colors.redAccent,
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Motor Power',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    batteryData.current <= -0.6
+                                        ? 'Locked while driving'
+                                        : (batteryData.isDischarging ? 'Ready to Ride' : 'Immobilized (Anti-Theft)'),
+                                    style: TextStyle(
+                                      color: batteryData.current <= -0.6
+                                          ? Colors.orange
+                                          : (batteryData.isDischarging ? Colors.blue : Colors.redAccent),
+                                      fontSize: 12,
+                                      fontWeight: batteryData.current <= -0.6 ? FontWeight.bold : FontWeight.normal,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                          Switch(
+                            value: batteryData.isDischarging,
+                            activeThumbColor: Colors.blue,
+                            activeTrackColor: Colors.blue.withValues(alpha: 0.5),
+                            inactiveThumbColor: Colors.redAccent,
+                            inactiveTrackColor: Colors.white10,
+                            // Disable the switch if the scooter is currently driving
+                            onChanged: batteryData.current <= -0.6
+                                ? null
+                                : (bool newValue) {
+                              context.read<BatteryProvider>().toggleDischarging(newValue);
+                            },
                           ),
                         ],
                       ),
@@ -179,7 +256,7 @@ class HomeScreen extends StatelessWidget {
                                       vertical: 8,
                                     ),
                                     decoration: BoxDecoration(
-                                      color: Colors.deepPurple.withOpacity(0.1),
+                                      color: Colors.deepPurple.withValues(alpha: 0.1),
                                       borderRadius: BorderRadius.circular(12),
                                     ),
                                     child: Text(
@@ -204,6 +281,34 @@ class HomeScreen extends StatelessWidget {
           );
         },
       ),
+    );
+  }
+}
+
+// =======================================================
+// GLASS THEME CARD
+// =======================================================
+class _GlassCard extends StatelessWidget {
+  final Widget child;
+
+  const _GlassCard({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1E1E), // Dark card for glass effect on light bg
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: child,
     );
   }
 }

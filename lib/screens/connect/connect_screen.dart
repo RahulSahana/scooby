@@ -375,7 +375,7 @@ class RadarPainter extends CustomPainter {
       final opacity = (1.0 - rippleProgress).clamp(0.0, 1.0);
 
       final paint = Paint()
-        ..color = color.withOpacity(opacity * 0.4) // Base opacity dialed down for a softer glow
+        ..color = color.withValues(alpha: opacity * 0.4) // Base opacity dialed down for a softer glow
         ..style = PaintingStyle.fill;
 
       canvas.drawCircle(center, radius, paint);

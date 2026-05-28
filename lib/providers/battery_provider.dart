@@ -45,8 +45,31 @@ class BatteryProvider extends ChangeNotifier {
   double get power => _batteryData.power;
   int get cycleCount => _batteryData.cycleCount;
   bool get isCharging => _batteryData.isCharging;
+  bool get isDischarging => _batteryData.isDischarging;
   List<double> get cellVoltages => _batteryData.cellVoltages;
 
+
+  // =========================================================
+  // HARDWARE CONTROLS
+  // =========================================================
+
+  Future<void> toggleCharging(bool enable) async {
+    // 1. Optimistic UI Update: Instantly change the toggle visually
+    _batteryData = _batteryData.copyWith(isCharging: enable);
+    notifyListeners();
+
+    // 2. Send the actual Bluetooth command
+    await _bleService.toggleChargeMosfet(enable);
+  }
+
+  Future<void> toggleDischarging(bool enable) async {
+    // Optimistic UI update
+    _batteryData = _batteryData.copyWith(isDischarging: enable);
+    notifyListeners();
+
+    // Execute Bluetooth command
+    await _bleService.toggleDischargeMosfet(enable);
+  }
   // =========================================================
   // SET MODE
   // =========================================================
@@ -88,6 +111,7 @@ class BatteryProvider extends ChangeNotifier {
     double? range,
     int? cycleCount,
     bool? isCharging,
+    bool? isDischarging,
     bool? isConnected,
     List<double>? cellVoltages,
   }) {
@@ -103,6 +127,7 @@ class BatteryProvider extends ChangeNotifier {
       range: range,
       cycleCount: cycleCount,
       isCharging: isCharging,
+      isDischarging: isDischarging,
       isConnected: isConnected,
       cellVoltages: cellVoltages,
     );

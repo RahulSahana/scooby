@@ -2,7 +2,7 @@ name: scooby
 description: "A Flutter project for my EV Scooty."
 
 publish_to: 'none'
-version: 2.0.0
+version: 2.0.1
 
 environment:
   sdk: ^3.11.4
@@ -31,9 +31,7 @@ flutter:
   uses-material-design: true
 
   assets:
-    - lib/assets/scooty.png
-    - lib/assets/charge_ev.png
-    - lib/assets/charge_ev_trans.png
+    - lib/assets/
 
 flutter_launcher_icons:
   android: true
