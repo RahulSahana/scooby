@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../providers/battery_provider.dart';
 import '../../widgets/battery_arc.dart';
 import '../../widgets/info_card.dart';
+import '../../widgets/connection_badge.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -12,7 +13,6 @@ class HomeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final batteryProvider = Provider.of<BatteryProvider>(context);
     final batteryData = batteryProvider.batteryData;
-    final screenHeight = MediaQuery.sizeOf(context).height;
 
     // FORCE LIGHT THEME FOR THIS SCREEN
     return Theme(
@@ -62,113 +62,7 @@ class HomeScreen extends StatelessWidget {
                     // ===================================================
                     // CONNECTION STATUS
                     // ===================================================
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).cardColor,
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.05),
-                            blurRadius: 8,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            batteryProvider.isConnected
-                                ? Icons.bluetooth_connected
-                                : Icons.bluetooth_disabled,
-                            color: batteryProvider.isConnected ? Colors.green : Colors.red,
-                          ),
-                          const SizedBox(width: 10),
-                          Flexible(
-                            child: Text(
-                              batteryProvider.isConnected ? "BMS Connected" : "BMS Disconnected",
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: batteryProvider.isConnected ? Colors.green : Colors.red,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    // ===================================================
-                    // MOTOR POWER (DISCHARGE) CONTROL CARD
-                    // ===================================================
-                    _GlassCard(
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: batteryData.isDischarging
-                                      ? Colors.blue.withValues(alpha: 0.2)
-                                      : Colors.redAccent.withValues(alpha: 0.1),
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                                child: Icon(
-                                  Icons.electric_scooter,
-                                  color: batteryData.isDischarging ? Colors.blue : Colors.redAccent,
-                                ),
-                              ),
-                              const SizedBox(width: 16),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text(
-                                    'Motor Power',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    batteryData.current <= -0.6
-                                        ? 'Locked while driving'
-                                        : (batteryData.isDischarging ? 'Ready to Ride' : 'Immobilized (Anti-Theft)'),
-                                    style: TextStyle(
-                                      color: batteryData.current <= -0.6
-                                          ? Colors.orange
-                                          : (batteryData.isDischarging ? Colors.blue : Colors.redAccent),
-                                      fontSize: 12,
-                                      fontWeight: batteryData.current <= -0.6 ? FontWeight.bold : FontWeight.normal,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                          Switch(
-                            value: batteryData.isDischarging,
-                            activeThumbColor: Colors.blue,
-                            activeTrackColor: Colors.blue.withValues(alpha: 0.5),
-                            inactiveThumbColor: Colors.redAccent,
-                            inactiveTrackColor: Colors.white10,
-                            // Disable the switch if the scooter is currently driving
-                            onChanged: batteryData.current <= -0.6
-                                ? null
-                                : (bool newValue) {
-                              context.read<BatteryProvider>().toggleDischarging(newValue);
-                            },
-                          ),
-                        ],
-                      ),
-                    ),
+                    const ConnectionBadge(),
 
                     const SizedBox(height: 20),
 
@@ -281,34 +175,6 @@ class HomeScreen extends StatelessWidget {
           );
         },
       ),
-    );
-  }
-}
-
-// =======================================================
-// GLASS THEME CARD
-// =======================================================
-class _GlassCard extends StatelessWidget {
-  final Widget child;
-
-  const _GlassCard({required this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E1E1E), // Dark card for glass effect on light bg
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: child,
     );
   }
 }

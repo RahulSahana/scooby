@@ -1,165 +1,147 @@
-import 'package:flutter/foundation.dart';
-import '../models/battery_data.dart';
+import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/ble_service.dart';
-
-// =========================================================
-// BATTERY PROVIDER
-// Central state for all battery telemetry.
-// Works with both BLE (direct) and HTTP (via backend).
-// =========================================================
+import '../models/battery_data.dart';
 
 class BatteryProvider extends ChangeNotifier {
-
+  late BleService bleService;
   BatteryData _batteryData = BatteryData.empty();
-  BatteryData get batteryData => _batteryData;
+  String _bmsPassword = "1234";
 
+  // Connection UI States
   bool _isConnected = false;
-  bool get isConnected => _isConnected;
+  bool _isConnecting = false;
 
-  bool _isLoading = false;
-  bool get isLoading => _isLoading;
-
-  // Which mode are we in?
-  ConnectionMode _mode = ConnectionMode.none;
-  ConnectionMode get mode => _mode;
-
-  DateTime? _lastUpdated;
-  DateTime? get lastUpdated => _lastUpdated;
-
-  // =========================================================
-  // BLE SERVICE
-  // =========================================================
-  late final BleService _bleService;
-  BleService get bleService => _bleService;
+  // The Garage Memory
+  List<Map<String, String>> _savedGarage = [];
+  String? _primaryScooterId;
 
   BatteryProvider() {
-    _bleService = BleService(batteryProvider: this);
+    bleService = BleService(batteryProvider: this);
+    loadGarage();
   }
 
-  // Convenience getters directly on provider
-  double get voltage => _batteryData.voltage;
-  double get current => _batteryData.current;
-  int get soc => _batteryData.soc;
-  int get soh => _batteryData.soh;
-  double get temperature => _batteryData.temperature;
-  double get power => _batteryData.power;
-  int get cycleCount => _batteryData.cycleCount;
-  bool get isCharging => _batteryData.isCharging;
-  bool get isDischarging => _batteryData.isDischarging;
-  List<double> get cellVoltages => _batteryData.cellVoltages;
+  BatteryData get batteryData => _batteryData;
+  String get bmsPassword => _bmsPassword;
+  List<Map<String, String>> get savedGarage => _savedGarage;
+  String? get primaryScooterId => _primaryScooterId;
 
+  bool get isConnected => _isConnected;
+  bool get isConnecting => _isConnecting;
 
-  // =========================================================
-  // HARDWARE CONTROLS
-  // =========================================================
-
-  Future<void> toggleCharging(bool enable) async {
-    // 1. Optimistic UI Update: Instantly change the toggle visually
-    _batteryData = _batteryData.copyWith(isCharging: enable);
-    notifyListeners();
-
-    // 2. Send the actual Bluetooth command
-    await _bleService.toggleChargeMosfet(enable);
-  }
-
-  Future<void> toggleDischarging(bool enable) async {
-    // Optimistic UI update
-    _batteryData = _batteryData.copyWith(isDischarging: enable);
-    notifyListeners();
-
-    // Execute Bluetooth command
-    await _bleService.toggleDischargeMosfet(enable);
-  }
-  // =========================================================
-  // SET MODE
-  // =========================================================
-  void setMode(ConnectionMode mode) {
-    _mode = mode;
-    notifyListeners();
-  }
-
-  // =========================================================
-  // SET CONNECTION STATE
-  // =========================================================
-  void setConnectionState(bool connected) {
-    _isConnected = connected;
-    if (!connected) {
-      // Don't wipe data on disconnect — keep last known values
-      _batteryData = _batteryData.copyWith(isConnected: false);
-    }
-    notifyListeners();
-  }
-
-  // =========================================================
-  // SET LOADING
-  // =========================================================
-  void setLoading(bool loading) {
-    _isLoading = loading;
-    notifyListeners();
-  }
-
-  // =========================================================
-  // UPDATE FULL TELEMETRY
-  // =========================================================
+  // Called by BleService to push hardware data to UI
   void updateTelemetry({
     double? voltage,
     double? current,
     int? soc,
-    int? soh,
-    double? power,
     double? temperature,
-    double? range,
+    List<double>? cellVoltages,
     int? cycleCount,
     bool? isCharging,
     bool? isDischarging,
+    double? power,
     bool? isConnected,
-    List<double>? cellVoltages,
   }) {
-    _isConnected = isConnected ?? _isConnected;
-
     _batteryData = _batteryData.copyWith(
       voltage: voltage,
       current: current,
       soc: soc,
-      soh: soh,
       power: power,
       temperature: temperature,
-      range: range,
       cycleCount: cycleCount,
       isCharging: isCharging,
       isDischarging: isDischarging,
-      isConnected: isConnected,
       cellVoltages: cellVoltages,
+      isConnected: isConnected ?? _isConnected,
     );
 
-    _lastUpdated = DateTime.now();
+    if (isConnected != null) _isConnected = isConnected;
+    if (_isConnected) _isConnecting = false;
     notifyListeners();
   }
 
-  // =========================================================
-  // UPDATE BATTERY DATA (full replace)
-  // =========================================================
-  void updateBatteryData(BatteryData data) {
-    _batteryData = data;
-    _isConnected = data.isConnected;
-    _lastUpdated = DateTime.now();
+  void updateBatteryData(BatteryData newData) {
+    _batteryData = newData;
+    _isConnected = newData.isConnected;
+    _isConnecting = false;
     notifyListeners();
   }
 
-  // =========================================================
-  // RESET
-  // =========================================================
-  void reset() {
-    _batteryData = BatteryData.empty();
-    _isConnected = false;
-    _lastUpdated = null;
-    _mode = ConnectionMode.none;
+  void setConnectionState(bool connected) {
+    _isConnected = connected;
+    if (connected) _isConnecting = false;
     notifyListeners();
   }
-}
 
-enum ConnectionMode {
-  none,
-  ble,      // Direct BLE to BMS
-  http,     // Via Python backend HTTP API
+  void setConnectingState(bool connecting) {
+    _isConnecting = connecting;
+    notifyListeners();
+  }
+
+  void setBmsPassword(String newPassword) {
+    _bmsPassword = newPassword;
+    notifyListeners();
+  }
+
+  Future<void> forceManualReconnect() async {
+    if (_isConnected || _isConnecting) return;
+    setConnectingState(true);
+    await bleService.forceManualReconnect();
+    // Note: Success will be handled by BleService calling setConnectionState
+  }
+
+  // =========================================================
+  // GARAGE METHODS
+  // =========================================================
+  Future<void> loadGarage() async {
+    final prefs = await SharedPreferences.getInstance();
+    _primaryScooterId = prefs.getString('primary_scooter_id');
+
+    final garageString = prefs.getString('saved_garage');
+    if (garageString != null && garageString.isNotEmpty) {
+      _savedGarage = garageString.split('||').map((item) {
+        final parts = item.split('::');
+        return {'id': parts[0], 'name': parts[1]};
+      }).toList();
+    }
+    notifyListeners();
+  }
+
+  Future<void> setPrimaryScooter(String macAddress) async {
+    _primaryScooterId = macAddress;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('primary_scooter_id', macAddress);
+    notifyListeners();
+  }
+
+  Future<void> saveScooterToGarage(String macAddress, String name) async {
+    if (_savedGarage.any((scooter) => scooter['id'] == macAddress)) return;
+
+    if (_savedGarage.length >= 3) {
+      int indexToRemove = _savedGarage.indexWhere((s) => s['id'] != _primaryScooterId);
+      if (indexToRemove != -1) _savedGarage.removeAt(indexToRemove);
+    }
+
+    _savedGarage.add({
+      'id': macAddress,
+      'name': name.isEmpty ? 'Unknown Scooty' : name
+    });
+
+    if (_savedGarage.length == 1) {
+      await setPrimaryScooter(macAddress);
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final garageString = _savedGarage.map((s) => '${s['id']}::${s['name']}').join('||');
+    await prefs.setString('saved_garage', garageString);
+    notifyListeners();
+  }
+
+  void toggleCharging(bool value) {
+    bleService.toggleChargeMosfet(value);
+  }
+
+  void toggleDischarging(bool value) {
+    bleService.toggleDischargeMosfet(value);
+  }
 }

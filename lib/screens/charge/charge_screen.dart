@@ -20,6 +20,17 @@ class ChargeScreen extends StatelessWidget {
     return Colors.red;                            // Poor / Replace soon
   }
 
+  // FIX 1: Changed return type from Icon to IconData
+  IconData _getBatteryIcon(num soc) {
+    if(soc >= 90) return Icons.battery_charging_full_outlined;
+    if(soc >= 80) return Icons.battery_6_bar_outlined;
+    if(soc >= 65) return Icons.battery_5_bar_outlined;
+    if(soc >= 50) return Icons.battery_4_bar_outlined;
+    if(soc >= 35) return Icons.battery_3_bar_outlined;
+    if(soc >= 20) return Icons.battery_2_bar_outlined;
+    return Icons.battery_1_bar_outlined;
+  }
+
   @override
   Widget build(BuildContext context) {
     final battery = context.watch<BatteryProvider>().batteryData;
@@ -64,7 +75,6 @@ class ChargeScreen extends StatelessWidget {
                 // ===================================================
                 // HEADER
                 // ===================================================
-
 
                 const Divider(color: Color(0xFFE0E0E0), height: 1),
 
@@ -123,11 +133,14 @@ class ChargeScreen extends StatelessWidget {
                           size: 20,
                         ),
                         const SizedBox(width: 8),
-                        const Icon(
-                          Icons.battery_4_bar_outlined,
-                          color: Color(0xFF4A4A4A),
+
+                        // FIX 2: Removed 'const' keyword from this Icon widget
+                        Icon(
+                          _getBatteryIcon(battery.soc),
+                          color: const Color(0xFF4A4A4A),
                           size: 20,
                         ),
+
                         const SizedBox(width: 4),
                         Text(
                           '${battery.soc}%',
@@ -239,92 +252,6 @@ class ChargeScreen extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-
-                      // ===================================================
-                      // CONTROLS CARD (WITH SAFETY INTERLOCK)
-                      // ===================================================
-                      _GlassCard(
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: battery.isCharging
-                                        ? Colors.green.withValues(alpha: 0.2)
-                                        : Colors.white10,
-                                    borderRadius: BorderRadius.circular(16),
-                                  ),
-                                  child: Icon(
-                                    Icons.power,
-                                    color: battery.isCharging ? Colors.green : Colors.white54,
-                                  ),
-                                ),
-                                const SizedBox(width: 16),
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Text(
-                                      'Charge Input',
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    // DYNAMIC TEXT BASED ON RIDING STATE
-                                    Text(
-                                      battery.current <= -0.6 
-                                          ? 'Locked while in motion' 
-                                          : (battery.isCharging ? 'Active (Allowing Current)' : 'Disabled (Cutoff)'),
-                                      style: TextStyle(
-                                        color: battery.current <= -0.6 
-                                            ? Colors.redAccent 
-                                            : (battery.isCharging ? Colors.green : Colors.white54),
-                                        fontSize: 12,
-                                        fontWeight: battery.current <= -0.6 ? FontWeight.bold : FontWeight.normal,
-                                      ),
-                                    ),
-
-                                    // ADD THIS NEW HELPER TEXT
-                                    if (!battery.isCharging)
-                                      Padding(
-                                        padding: const EdgeInsets.only(top: 4.0),
-                                        child: Text(
-                                          '* May require replugging the charger to resume',
-                                          style: TextStyle(
-                                            color: Colors.orangeAccent.withValues(alpha: 0.8),
-                                            fontSize: 10,
-                                            fontStyle: FontStyle.italic,
-                                          ),
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                            // THE SWITCH LOCK LOGIC
-                            Switch(
-                              value: battery.isCharging, 
-                              activeThumbColor: const Color(0xFF8B5CF6),
-                              inactiveThumbColor: Colors.grey,
-                              inactiveTrackColor: Colors.white10,
-                              // If current is pulling more than 2 Amps, disable the switch by setting onChanged to null
-                              onChanged: battery.current <= -0.6
-                                  ? null 
-                                  : (bool newValue) {
-                                      context.read<BatteryProvider>().toggleCharging(newValue);
-                                    },
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      const SizedBox(height: 24),
-
                       const Text(
                         'BATTERY VITALS',
                         style: TextStyle(
@@ -524,34 +451,6 @@ class _WavyScooterFillState extends State<_WavyScooterFill> with SingleTickerPro
           ),
         ],
       ),
-    );
-  }
-}
-
-// =======================================================
-// GLASS THEME CARD
-// =======================================================
-class _GlassCard extends StatelessWidget {
-  final Widget child;
-
-  const _GlassCard({required this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E1E1E), // Dark card for glass effect on light bg
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: child,
     );
   }
 }

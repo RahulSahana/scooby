@@ -1,437 +1,207 @@
 import 'dart:async';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-//import '../models/battery_data.dart';
 import '../parsers/jk_bms_parser.dart';
 import '../providers/battery_provider.dart';
 import 'jk_command_service.dart';
 
 class BleService {
-
-  // =========================================================
-  // PROVIDER
-  // =========================================================
-
   final BatteryProvider batteryProvider;
-
-  BleService({
-    required this.batteryProvider,
-  });
-
-  // =========================================================
-  // COMMANDS
-  // =========================================================
+  BleService({required this.batteryProvider});
 
   final JkCommandService _commandService = JkCommandService();
 
-  // =========================================================
-  // BLE
-  // =========================================================
-
   StreamSubscription? _scanSubscription;
-
   StreamSubscription? _autoConnectSubscription;
-
   StreamSubscription? _notifySubscription;
-
   StreamSubscription? _connectionStateSubscription;
 
   BluetoothDevice? connectedDevice;
-
   BluetoothCharacteristic? jkCharacteristic;
-
   List<BluetoothDevice> devices = [];
 
-  // =========================================================
-  // BUFFER
-  // =========================================================
-
   final List<int> packetBuffer = [];
-
   int packetCount = 0;
 
-  // =========================================================
-  // POLLING
-  // =========================================================
-
   Timer? pollingTimer;
+  Timer? _autoReconnectTimer;
+  bool _isIntentionallyDisconnected = false;
 
   // =========================================================
-  // START SCAN
+  // SCANNING
   // =========================================================
 
   Future<void> startScan() async {
-
     devices.clear();
+    debugPrint('STARTING BLE SCAN');
+    await FlutterBluePlus.startScan(timeout: const Duration(seconds: 10), androidScanMode: AndroidScanMode.lowLatency);
 
-    debugPrint(
-      'STARTING BLE SCAN',
-    );
-
-    await FlutterBluePlus.startScan(
-
-      timeout:
-      const Duration(seconds: 10),
-
-      androidScanMode:
-      AndroidScanMode.lowLatency,
-    );
-
-    _scanSubscription =
-        FlutterBluePlus.scanResults.listen(
-
-              (results) {
-
-            for (final result in results) {
-
-              final device =
-                  result.device;
-
-              if (
-
-              device.platformName
-                  .isNotEmpty &&
-
-                  !devices.contains(device)
-
-              ) {
-
-                devices.add(device);
-
-                debugPrint(
-
-                  'FOUND DEVICE: '
-
-                      '${device.platformName} '
-
-                      '${device.remoteId}',
-                );
-              }
-            }
-          },
-        );
+    _scanSubscription = FlutterBluePlus.scanResults.listen((results) {
+      for (final result in results) {
+        final device = result.device;
+        if (device.platformName.isNotEmpty && !devices.contains(device)) {
+          devices.add(device);
+        }
+      }
+    });
   }
 
-  // =========================================================
-  // STOP SCAN
-  // =========================================================
-
   Future<void> stopScan() async {
-
     await FlutterBluePlus.stopScan();
-
     await _scanSubscription?.cancel();
-
     _scanSubscription = null;
   }
 
   // =========================================================
-  // CONNECT
+  // CONNECTION PIPELINE
   // =========================================================
 
-  Future<void> connect(
-      BluetoothDevice device,
-      ) async {
-    // Avoid redundant connection attempts
-    if (connectedDevice?.remoteId == device.remoteId) {
-      debugPrint('ALREADY CONNECTED TO: ${device.remoteId}');
-      return;
-    }
+  Future<void> connect(BluetoothDevice device) async {
+    if (connectedDevice?.remoteId == device.remoteId && batteryProvider.isConnected) return;
+
+    // 1. Clean up old listeners to prevent ghost connections
+    await _connectionStateSubscription?.cancel();
+    _connectionStateSubscription = null;
 
     connectedDevice = device;
+    batteryProvider.setConnectingState(true);
 
     try {
-      await device.connect(
-        license: License.free,
-        timeout: const Duration(seconds: 15),
-      );
+      await device.connect(license: License.free, timeout: const Duration(seconds: 15));
+      _isIntentionallyDisconnected = false;
+      _autoReconnectTimer?.cancel();
 
-      final prefs =
-      await SharedPreferences.getInstance();
-
-      await prefs.setString(
-        'last_device_id',
-        device.remoteId.str,
-      );
-
-      debugPrint(
-        'CONNECTED TO: '
-            '${device.platformName}',
-      );
-
-      batteryProvider
-          .setConnectionState(true);
-
+      // Save to Garage
+      await batteryProvider.saveScooterToGarage(device.remoteId.str, device.platformName);
+      debugPrint('CONNECTED TO: ${device.platformName}');
     } catch (e) {
-
-      debugPrint(
-        'CONNECT ERROR: $e',
-      );
-
-      batteryProvider
-          .setConnectionState(false);
-
+      debugPrint('CONNECT ERROR: $e');
+      batteryProvider.setConnectionState(false);
       rethrow;
     }
 
+    // 2. Setup listener ONLY for unexpected disconnects (No discovery here!)
+    _connectionStateSubscription = device.connectionState.listen((state) {
+      if (state == BluetoothConnectionState.disconnected) {
+        _onDeviceDisconnected();
+        if (!_isIntentionallyDisconnected) _startAutoReconnectLoop();
+      }
+    });
 
+    // 3. Handle Discovery safely
+    await _discoverAndSetup(device);
+  }
 
-    // =======================================================
-    // CONNECTION STATE
-    // =======================================================
+  Future<void> _discoverAndSetup(BluetoothDevice device) async {
+    try {
+      // CRITICAL FIX: Give Android GATT 500ms to settle before demanding services
+      await Future.delayed(const Duration(milliseconds: 500));
 
-    _connectionStateSubscription =
+      final services = await device.discoverServices();
+      debugPrint('SERVICES FOUND: ${services.length}');
 
-        device.connectionState.listen(
-
-              (state) {
-
-            debugPrint(
-              'CONNECTION STATE: $state',
-            );
-
-            if (
-
-            state ==
-                BluetoothConnectionState
-                    .disconnected
-
-            ) {
-
-              _onDeviceDisconnected();
+      for (final service in services) {
+        if (service.uuid.toString().toLowerCase().contains('ffe0')) {
+          for (final characteristic in service.characteristics) {
+            if (characteristic.uuid.toString().toLowerCase().contains('ffe1')) {
+              debugPrint('FOUND JK CHARACTERISTIC');
+              jkCharacteristic = characteristic;
+              await _setupCharacteristic(characteristic);
+              batteryProvider.setConnectionState(true);
+              return;
             }
-          },
-        );
-
-    // =======================================================
-    // DISCOVER SERVICES
-    // =======================================================
-
-    final services =
-    await device.discoverServices();
-
-    debugPrint(
-      'SERVICES FOUND: '
-          '${services.length}',
-    );
-
-    for (final service in services) {
-
-      final serviceUuid =
-
-      service.uuid
-          .toString()
-          .toLowerCase();
-
-      if (serviceUuid.contains('ffe0')) {
-
-        debugPrint(
-          'FOUND JK SERVICE',
-        );
-
-        for (final characteristic
-        in service.characteristics) {
-
-          final charUuid =
-
-          characteristic.uuid
-              .toString()
-              .toLowerCase();
-
-          if (charUuid.contains('ffe1')) {
-
-            debugPrint(
-              'FOUND JK CHARACTERISTIC',
-            );
-
-            jkCharacteristic =
-                characteristic;
-
-            await _setupCharacteristic(
-              characteristic,
-            );
-
-            break;
           }
         }
       }
-    }
-
-    if (jkCharacteristic == null) {
-
-      debugPrint(
-        'JK CHARACTERISTIC NOT FOUND',
-      );
+      debugPrint('JK CHARACTERISTIC NOT FOUND');
+    } catch (e) {
+      debugPrint('DISCOVERY FAILED: $e');
+      batteryProvider.setConnectionState(false);
     }
   }
 
-  Future<bool> autoConnect() async {
+  Future<bool> autoConnect({required License license}) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final savedId = prefs.getString('last_device_id');
+      final savedId = batteryProvider.primaryScooterId;
+      if (savedId == null) return false;
 
-      if (savedId == null) {
-        debugPrint('AUTO-CONNECT: No saved device ID found.');
-        return false;
-      }
-
-      debugPrint('AUTO-CONNECT: Searching for $savedId...');
-
-      // 1. Check if it is already connected via the system cache
+      batteryProvider.setConnectingState(true);
       List<BluetoothDevice> connected = await FlutterBluePlus.systemDevices([]);
       for (var device in connected) {
         if (device.remoteId.str == savedId) {
-          debugPrint('AUTO-CONNECT: Device already connected via system.');
           await connect(device);
           return true;
         }
       }
 
-      // 2. Start a targeted scan
-      await FlutterBluePlus.startScan(
-        timeout: const Duration(seconds: 8), // Give it 8 seconds to find the scooter
-        androidScanMode: AndroidScanMode.lowLatency,
-      );
-
-      // Wait and listen to the scan results
+      await FlutterBluePlus.startScan(timeout: const Duration(seconds: 8), androidScanMode: AndroidScanMode.lowLatency);
       await for (final results in FlutterBluePlus.onScanResults) {
         for (ScanResult r in results) {
           if (r.device.remoteId.str == savedId) {
-            debugPrint('AUTO-CONNECT: Found target device!');
             await FlutterBluePlus.stopScan();
             await connect(r.device);
             return true;
           }
         }
-        // If scan times out, the stream usually closes or stops sending results.
-        // FlutterBluePlus.isScanning will become false.
         if (!FlutterBluePlus.isScanningNow) break;
       }
-
-      debugPrint('AUTO-CONNECT: Device not found in range.');
+      batteryProvider.setConnectingState(false);
       return false;
-
     } catch (e) {
-      debugPrint('AUTO-CONNECT ERROR: $e');
+      batteryProvider.setConnectingState(false);
       return false;
     }
   }
 
   // =========================================================
-  // SETUP CHARACTERISTIC
+  // SETUP CHARACTERISTIC & POLLING
   // =========================================================
 
-  Future<void> _setupCharacteristic(
-      BluetoothCharacteristic characteristic,
-      ) async {
-
-    // =======================================================
-    // ENABLE NOTIFICATIONS
-    // =======================================================
-
+  Future<void> _setupCharacteristic(BluetoothCharacteristic characteristic) async {
     await characteristic.setNotifyValue(true);
+    await Future.delayed(const Duration(seconds: 1)); // Wait for notifications to register
 
-    debugPrint(
-      'NOTIFICATIONS ENABLED',
-    );
+    _notifySubscription = characteristic.lastValueStream.listen((chunk) {
+      if (chunk.isNotEmpty) _onDataChunk(chunk);
+    });
 
-    // IMPORTANT FOR JK BMS
-    // WAIT AFTER ENABLING NOTIFICATIONS
-
-    await Future.delayed(
-      const Duration(seconds: 2),
-    );
-
-    // =======================================================
-    // LISTEN DATA
-    // =======================================================
-
-    _notifySubscription =
-        characteristic.lastValueStream.listen(
-
-              (chunk) {
-
-            if (chunk.isEmpty) return;
-
-            _onDataChunk(chunk);
-          },
-        );
-
-    // =======================================================
-    // CELL INFO REQUEST (0x96) FIRST
-    // =======================================================
-
-    await _commandService
-        .sendCellInfoRequest(
-      characteristic,
-    );
-
-    debugPrint(
-      'CELL INFO REQUEST SENT',
-    );
-
-    // WAIT BEFORE DEVICE INFO
-
-    await Future.delayed(
-      const Duration(seconds: 1),
-    );
-
-    // =======================================================
-    // DEVICE INFO REQUEST (0x97)
-    // =======================================================
-
-    await _commandService
-        .sendDeviceInfoRequest(
-      characteristic,
-    );
-
-    debugPrint(
-      'DEVICE INFO REQUEST SENT',
-    );
-
-    debugPrint(
-      'INITIAL REQUESTS SENT',
-    );
-
-    // =======================================================
-    // START POLLING
-    // =======================================================
+    await _commandService.sendCellInfoRequest(characteristic);
+    await Future.delayed(const Duration(seconds: 1));
+    await _commandService.sendDeviceInfoRequest(characteristic);
 
     _startPolling();
   }
 
+  void _startPolling() {
+    if (jkCharacteristic == null) return;
+    pollingTimer?.cancel();
+    pollingTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
+      if (jkCharacteristic == null) return;
+      try {
+        await _commandService.sendCellInfoRequest(jkCharacteristic!);
+      } catch (e) {
+        debugPrint('POLL ERROR: $e');
+      }
+    });
+  }
+
   // =========================================================
-  // DATA CHUNK
+  // DATA PARSING
   // =========================================================
 
-  void _onDataChunk(
-      List<int> chunk,
-      ) {
-
+  void _onDataChunk(List<int> chunk) {
     packetBuffer.addAll(chunk);
-
     packetCount++;
 
-    if (kDebugMode) {
-      final hex = chunk
-          .map((e) => e.toRadixString(16).padLeft(2, '0'))
-          .join(' ');
-      debugPrint('CHUNK #$packetCount [${chunk.length}B]: $hex');
-    }
-
     while (packetBuffer.length >= 4) {
-      // Find header at start
       if (!_bufferStartsWithHeader()) {
         _realignBuffer();
         if (packetBuffer.length < 4 || !_bufferStartsWithHeader()) break;
       }
-
-      // Wait for up to 320 bytes or next header
       final frameEnd = _findNextFrameEnd();
-      if (frameEnd == -1) break; // not enough data yet
+      if (frameEnd == -1) break;
 
       final frame = packetBuffer.sublist(0, frameEnd);
       packetBuffer.removeRange(0, frameEnd);
@@ -440,348 +210,156 @@ class BleService {
   }
 
   int _findNextFrameEnd() {
-    // Look for next header after byte 4 to find true frame boundary
     for (int i = 4; i <= packetBuffer.length - 4 && i <= 320; i++) {
-      if (packetBuffer[i] == 0x55 &&
-          packetBuffer[i + 1] == 0xAA &&
-          packetBuffer[i + 2] == 0xEB &&
-          packetBuffer[i + 3] == 0x90) {
+      if (packetBuffer[i] == 0x55 && packetBuffer[i + 1] == 0xAA && packetBuffer[i + 2] == 0xEB && packetBuffer[i + 3] == 0x90) {
         return i;
       }
     }
-    // No next header found — if buffer >= 320, take 320
     if (packetBuffer.length >= 320) return 320;
-    return -1; // still accumulating
+    return -1;
   }
 
   bool _bufferStartsWithHeader() {
     if (packetBuffer.length < 4) return false;
-    return packetBuffer[0] == 0x55 &&
-        packetBuffer[1] == 0xAA &&
-        packetBuffer[2] == 0xEB &&
-        packetBuffer[3] == 0x90;
+    return packetBuffer[0] == 0x55 && packetBuffer[1] == 0xAA && packetBuffer[2] == 0xEB && packetBuffer[3] == 0x90;
   }
 
-  // =========================================================
-  // PROCESS FRAME
-  // =========================================================
-
-  void _processFrame(
-      List<int> frame,
-      ) {
-
-    // QUICK CHECK
-    debugPrint("FRAME LENGTH: ${frame.length}");
-    if (frame.length >= 4) {
-      debugPrint("HEADER: ${frame[0]} ${frame[1]} ${frame[2]} ${frame[3]}");
+  void _realignBuffer() {
+    for (int i = 1; i < packetBuffer.length - 3; i++) {
+      if (packetBuffer[i] == 0x55 && packetBuffer[i + 1] == 0xAA && packetBuffer[i + 2] == 0xEB && packetBuffer[i + 3] == 0x90) {
+        final realigned = packetBuffer.sublist(i);
+        packetBuffer.clear();
+        packetBuffer.addAll(realigned);
+        return;
+      }
     }
+    packetBuffer.clear();
+  }
 
-    debugPrint(
-      'PROCESSING FRAME '
-          '[${frame.length} bytes]',
-    );
+  void _processFrame(List<int> frame) {
+    if (!JkBmsParser.isValidHeader(frame) || !JkBmsParser.isValidCrc(frame)) return;
 
-    if (!JkBmsParser.isValidHeader(frame) ||
-        !JkBmsParser.isValidCrc(frame)) {
-
-      debugPrint(
-        'INVALID FRAME',
-      );
-
-      return;
-    }
-
-    debugPrint(
-      'VALID JK FRAME',
-    );
-
-    final frameType =
-    JkBmsParser.frameType(frame);
-
-    debugPrint(
-      'FRAME TYPE: $frameType',
-    );
-
-    // =======================================================
-    // CELL INFO
-    // =======================================================
-
-    if (frameType == 0x02) {
-
-      JkBmsParser.debugTemperatures(frame);
-      final batteryData =
-      JkBmsParser.parseBatteryData(frame);
-
-      debugPrint(
-        'SOC: ${batteryData.soc}',
-      );
-
-      debugPrint(
-        'VOLTAGE: ${batteryData.voltage}',
-      );
-
-      debugPrint(
-        'CURRENT: ${batteryData.current}',
-      );
-
+    if (JkBmsParser.frameType(frame) == 0x02) {
+      final batteryData = JkBmsParser.parseBatteryData(frame);
       batteryProvider.updateTelemetry(
-
-        voltage:
-        batteryData.voltage,
-
-        current:
-        batteryData.current,
-
-        soc:
-        batteryData.soc,
-
-        temperature:
-        batteryData.temperature,
-
-        cellVoltages:
-        batteryData.cellVoltages,
-
-        cycleCount:
-        batteryData.cycleCount,
-
-        isCharging:
-        batteryData.isCharging,
-
-        isDischarging:
-        batteryData.isDischarging,
-
-        power:
-        batteryData.power,
-
+        voltage: batteryData.voltage,
+        current: batteryData.current,
+        soc: batteryData.soc,
+        temperature: batteryData.temperature,
+        cellVoltages: batteryData.cellVoltages,
+        cycleCount: batteryData.cycleCount,
+        isCharging: batteryData.isCharging,
+        isDischarging: batteryData.isDischarging,
+        power: batteryData.power,
         isConnected: true,
       );
     }
-
-    // =======================================================
-    // DEVICE INFO
-    // =======================================================
-
-    else if (frameType == 0x03) {
-
-      debugPrint(
-        'DEVICE INFO FRAME RECEIVED',
-      );
-    }
-
-    // =======================================================
-    // SETTINGS
-    // =======================================================
-
-    else if (frameType == 0x01) {
-
-      debugPrint(
-        'SETTINGS FRAME RECEIVED',
-      );
-    }
   }
 
   // =========================================================
-  // CONTROL METHODS
+  // HARDWARE CONTROLS
   // =========================================================
 
   Future<void> toggleChargeMosfet(bool enable) async {
-    if (jkCharacteristic == null) {
-      debugPrint('CANNOT TOGGLE: No characteristic found.');
-      return;
-    }
-
-    debugPrint('INITIATING WRITE SEQUENCE FOR MOSFET: $enable');
-
+    if (jkCharacteristic == null) return;
     try {
-      // 1. Send Password Handshake
-      await _commandService.sendAuthorization(jkCharacteristic!);
-
-      // Give the BMS a tiny window to process the authorization
+      await _commandService.sendAuthorization(jkCharacteristic!, batteryProvider.bmsPassword);
       await Future.delayed(const Duration(milliseconds: 200));
-
-      // 2. Send the actual toggle command
       await _commandService.setChargeMosfet(jkCharacteristic!, enable);
-
-      // 3. Force an immediate telemetry read so the UI updates instantly
       await Future.delayed(const Duration(milliseconds: 300));
       await _commandService.sendCellInfoRequest(jkCharacteristic!);
-
     } catch (e) {
-      debugPrint('WRITE SEQUENCE FAILED: $e');
+      debugPrint('CHARGE TOGGLE FAILED: $e');
     }
   }
 
   Future<void> toggleDischargeMosfet(bool enable) async {
     if (jkCharacteristic == null) return;
-
     try {
-      await _commandService.sendAuthorization(jkCharacteristic!);
+      await _commandService.sendAuthorization(jkCharacteristic!, batteryProvider.bmsPassword);
       await Future.delayed(const Duration(milliseconds: 200));
-
       await _commandService.setDischargeMosfet(jkCharacteristic!, enable);
-
       await Future.delayed(const Duration(milliseconds: 300));
       await _commandService.sendCellInfoRequest(jkCharacteristic!);
     } catch (e) {
-      debugPrint('WRITE SEQUENCE FAILED: $e');
+      debugPrint('DISCHARGE TOGGLE FAILED: $e');
     }
   }
 
   // =========================================================
-  // REALIGN BUFFER
+  // AUTO RECONNECT LOOP
   // =========================================================
 
-  void _realignBuffer() {
-
-    for (
-
-    int i = 1;
-
-    i < packetBuffer.length - 3;
-
-    i++
-
-    ) {
-
-      if (
-
-      packetBuffer[i] == 0x55 &&
-
-          packetBuffer[i + 1] == 0xAA &&
-
-          packetBuffer[i + 2] == 0xEB &&
-
-          packetBuffer[i + 3] == 0x90
-
-      ) {
-
-        final realigned =
-        packetBuffer.sublist(i);
-
-        packetBuffer.clear();
-
-        packetBuffer.addAll(realigned);
-
-        debugPrint(
-          'BUFFER REALIGNED',
-        );
-
+  void _startAutoReconnectLoop() {
+    _autoReconnectTimer?.cancel();
+    _autoReconnectTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
+      if (connectedDevice == null || batteryProvider.isConnected) {
+        timer.cancel();
         return;
       }
-    }
-
-    packetBuffer.clear();
+      try {
+        await connectedDevice!.connect(license: License.free, timeout: const Duration(seconds: 4));
+        // On success, trigger the setup safely
+        await _discoverAndSetup(connectedDevice!);
+        timer.cancel();
+      } catch (e) {
+        debugPrint('Auto-reconnect failed');
+      }
+    });
   }
 
-  // =========================================================
-  // POLLING
-  // =========================================================
+  Future<void> forceManualReconnect() async {
+    _autoReconnectTimer?.cancel();
 
-  void _startPolling() {
-
-    if (jkCharacteristic == null) {
+    if (connectedDevice == null) {
+      final success = await autoConnect(license: License.free);
+      if (!success) {
+        batteryProvider.setConnectingState(false);
+      }
       return;
     }
 
-    pollingTimer?.cancel();
-
-    pollingTimer = Timer.periodic(
-
-      const Duration(seconds: 3),
-
-          (_) async {
-
-        if (jkCharacteristic == null) {
-          return;
-        }
-
-        try {
-
-          await _commandService
-              .sendCellInfoRequest(
-            jkCharacteristic!,
-          );
-
-        } catch (e) {
-
-          debugPrint(
-            'POLL ERROR: $e',
-          );
-        }
-      },
-    );
-
-    debugPrint(
-      'POLLING STARTED',
-    );
+    try {
+      await connect(connectedDevice!);
+    } catch (e) {
+      _startAutoReconnectLoop();
+    }
   }
 
   // =========================================================
-  // DEVICE DISCONNECTED
+  // DISCONNECT & TEARDOWN
   // =========================================================
 
   void _onDeviceDisconnected() {
-
     pollingTimer?.cancel();
-
     pollingTimer = null;
-
     packetBuffer.clear();
-
     jkCharacteristic = null;
-
-    batteryProvider
-        .setConnectionState(false);
-
-    debugPrint(
-      'DEVICE DISCONNECTED',
-    );
+    batteryProvider.setConnectionState(false);
   }
 
-  // =========================================================
-  // DISCONNECT
-  // =========================================================
-
-  Future<void> disconnect() async {
-
+  Future<void> disconnect({bool forgetDevice = false}) async {
     try {
-
-      pollingTimer?.cancel();
-
-      pollingTimer = null;
+      _isIntentionallyDisconnected = true;
+      _autoReconnectTimer?.cancel();
+      _onDeviceDisconnected();
 
       await _autoConnectSubscription?.cancel();
       _autoConnectSubscription = null;
-
       await _notifySubscription?.cancel();
-
       _notifySubscription = null;
-
-      await _connectionStateSubscription
-          ?.cancel();
-
+      await _connectionStateSubscription?.cancel();
       _connectionStateSubscription = null;
 
-      packetBuffer.clear();
-
-      jkCharacteristic = null;
-
-      batteryProvider
-          .setConnectionState(false);
-
       await connectedDevice?.disconnect();
-
       connectedDevice = null;
 
-      debugPrint(
-        'DISCONNECTED',
-      );
-
+      if (forgetDevice) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('last_device_id');
+      }
     } catch (e) {
-
-      debugPrint(
-        'DISCONNECT ERROR: $e',
-      );
+      debugPrint('DISCONNECT ERROR: $e');
     }
   }
 }

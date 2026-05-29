@@ -1,22 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:scooby/screens/connect/connect_screen.dart';
 
 import 'providers/battery_provider.dart';
 
 import 'screens/home/home_screen.dart';
 import 'screens/charge/charge_screen.dart';
 import 'screens/profile/profile_screen.dart';
-import 'screens/connect/connect_screen.dart';
+import 'widgets/connection_badge.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // IMMERSIVE PREMIUM UI CONFIGURATION
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      systemNavigationBarColor: Colors.transparent,
+      statusBarColor: Colors.transparent, // Makes the bar itself transparent
+      statusBarIconBrightness: Brightness.dark, // Dark icons for Android (clock, wifi, battery)
+      statusBarBrightness: Brightness.light, // Dark icons for iOS
+      systemNavigationBarColor: Colors.transparent, // Optional: applies to the bottom nav bar too
       systemNavigationBarIconBrightness: Brightness.dark,
     ),
   );
@@ -26,8 +29,10 @@ void main() {
   );
 
   runApp(
-    ChangeNotifierProvider(
-      create: (_) => BatteryProvider(),
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => BatteryProvider()),
+      ],
       child: const Scooby(),
     ),
   );
@@ -54,6 +59,7 @@ class Scooby extends StatelessWidget {
         ),
         child: ConnectScreen(),
         //child: ChargeScreen(),
+        //child: ProfileScreen(),
       ),
     );
   }
@@ -83,8 +89,6 @@ class _MyHomePageState extends State<MyHomePage> {
 
   @override
   Widget build(BuildContext context) {
-    final batteryProvider = Provider.of<BatteryProvider>(context);
-
     // Dynamic Status Bar Brightness based on screen (Charge/Profile are Dark)
     final isDarkScreen = selectedIndex == 1 || selectedIndex == 2;
 
@@ -99,6 +103,7 @@ class _MyHomePageState extends State<MyHomePage> {
         appBar: AppBar(
           backgroundColor: Colors.transparent,
           elevation: 0,
+          systemOverlayStyle: SystemUiOverlayStyle.dark,
           title: const Text(
             "Scooby",
             style: TextStyle(
@@ -107,27 +112,10 @@ class _MyHomePageState extends State<MyHomePage> {
               color: Colors.deepPurple,
             ),
           ),
-          actions: [
+          actions: const [
             Padding(
-              padding: const EdgeInsets.only(right: 16),
-              child: Row(
-                children: [
-                  Icon(
-                    batteryProvider.isConnected
-                        ? Icons.bluetooth_connected
-                        : Icons.bluetooth_disabled,
-                    color: batteryProvider.isConnected ? Colors.green : Colors.red,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    batteryProvider.isConnected ? "Connected" : "Disconnected",
-                    style: TextStyle(
-                      color: batteryProvider.isConnected ? Colors.green : Colors.red,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
+              padding: EdgeInsets.only(right: 16),
+              child: ConnectionBadge(isSmall: true),
             ),
           ],
         ),

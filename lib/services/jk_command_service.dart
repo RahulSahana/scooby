@@ -194,15 +194,10 @@ class JkCommandService {
   // AUTHORIZATION HANDSHAKE
   // =========================================================
 
-  Future<void> sendAuthorization(BluetoothCharacteristic characteristic) async {
+  Future<void> sendAuthorization(BluetoothCharacteristic characteristic, String password) async {
     try {
-      // JK Settings Password: "802626052E"
-      // 8=0x38, 0=0x30, 2=0x32, 6=0x36, 2=0x32
-      // 6=0x36, 0=0x30, 5=0x35, 2=0x32, E=0x45
-      final passwordBytes = [
-        0x38, 0x30, 0x32, 0x36, 0x32,
-        0x36, 0x30, 0x35, 0x32, 0x45
-      ];
+      // Converts the string (e.g. "1234" or "802626052E") into raw ASCII bytes
+      final passwordBytes = password.codeUnits;
 
       // Register 0x00 is the authorization register
       final command = buildWriteCommand(0x00, passwordBytes);

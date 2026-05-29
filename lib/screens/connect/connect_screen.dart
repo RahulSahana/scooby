@@ -1,12 +1,12 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 
 import '../../main.dart';
 import '../../providers/battery_provider.dart';
-import '../../services/ble_service.dart';
 
 class ConnectScreen extends StatefulWidget {
   const ConnectScreen({super.key});
@@ -15,13 +15,12 @@ class ConnectScreen extends StatefulWidget {
   State<ConnectScreen> createState() => _ConnectScreenState();
 }
 
-// Added SingleTickerProviderStateMixin for the radar animation
 class _ConnectScreenState extends State<ConnectScreen> with SingleTickerProviderStateMixin {
-
   // =========================================================
   // BLE SERVICE & STATES
   // =========================================================
-  late final BleService bleService;
+  late BatteryProvider _batteryProvider;
+
   bool isScanning = false;
   bool isConnecting = false;
   List<BluetoothDevice> devices = [];
@@ -41,15 +40,15 @@ class _ConnectScreenState extends State<ConnectScreen> with SingleTickerProvider
   ];
 
   // =========================================================
-  // INIT
+  // INIT & DISPOSE
   // =========================================================
   @override
   void initState() {
     super.initState();
 
-    final batteryProvider = Provider.of<BatteryProvider>(context, listen: false);
-    bleService = batteryProvider.bleService;
-    batteryProvider.addListener(_onBatteryProviderChanged);
+    // 1. Save the provider to a variable when the screen first loads
+    _batteryProvider = context.read<BatteryProvider>();
+    _batteryProvider.addListener(_onBatteryProviderChanged);
 
     // Setup Radar Animation
     _radarController = AnimationController(
@@ -60,25 +59,51 @@ class _ConnectScreenState extends State<ConnectScreen> with SingleTickerProvider
     _initializeApp();
   }
 
+  @override
+  void dispose() {
+    // 2. Safely remove the listener using the saved variable
+    _batteryProvider.removeListener(_onBatteryProviderChanged);
+
+    _radarController.dispose();
+    _stopStatusTimer();
+    _batteryProvider.bleService.stopScan();
+
+    super.dispose();
+  }
+
+  // =========================================================
+  // APP LOGIC
+  // =========================================================
   Future<void> _initializeApp() async {
     await requestPermissions();
-
     if (!mounted) return;
 
     // Start the cinematic connection sequence
     setState(() => isConnecting = true);
     _startStatusTimer();
 
-    final autoConnectSuccess = await bleService.autoConnect();
+    // Attempt auto-connect
+    final autoConnectSuccess = await _batteryProvider.bleService.autoConnect(license: License.free);
 
-    if (autoConnectSuccess) {
-      return;
-    } else {
-      if (mounted) {
-        _stopStatusTimer();
-        setState(() => isConnecting = false);
-        await startScan();
-      }
+    if (!autoConnectSuccess && mounted) {
+      _stopStatusTimer();
+      setState(() => isConnecting = false);
+      await startScan();
+    }
+  }
+
+  void _onBatteryProviderChanged() {
+    if (!mounted) return; // THIS LINE STOPS THE CRASHES!
+
+    if (_batteryProvider.isConnected) {
+      debugPrint("AUTO-NAVIGATING TO DASHBOARD");
+      _stopStatusTimer();
+      _batteryProvider.bleService.stopScan();
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const MyHomePage()),
+      );
     }
   }
 
@@ -87,6 +112,7 @@ class _ConnectScreenState extends State<ConnectScreen> with SingleTickerProvider
   // =========================================================
   void _startStatusTimer() {
     _statusIndex = 0;
+    _statusTimer?.cancel();
     _statusTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
       if (!mounted) return;
       setState(() {
@@ -101,29 +127,9 @@ class _ConnectScreenState extends State<ConnectScreen> with SingleTickerProvider
     _statusTimer?.cancel();
   }
 
-  void _onBatteryProviderChanged() {
-    final batteryProvider = Provider.of<BatteryProvider>(context, listen: false);
-    if (batteryProvider.isConnected && mounted) {
-      debugPrint("AUTO-NAVIGATING TO DASHBOARD");
-      bleService.stopScan();
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const MyHomePage()),
-      );
-    }
-  }
-
-  @override
-  void dispose() {
-    Provider.of<BatteryProvider>(context, listen: false)
-        .removeListener(_onBatteryProviderChanged);
-
-    _radarController.dispose();
-    _stopStatusTimer();
-    bleService.stopScan();
-    super.dispose();
-  }
-
+  // =========================================================
+  // HARDWARE PIPELINE
+  // =========================================================
   Future<void> requestPermissions() async {
     await [
       Permission.bluetoothScan,
@@ -134,22 +140,21 @@ class _ConnectScreenState extends State<ConnectScreen> with SingleTickerProvider
 
   Future<void> startScan() async {
     if (isScanning) return;
-    
+
     setState(() {
       isScanning = true;
-      if (devices.isEmpty) _startStatusTimer(); // Start text animation if screen is empty
+      if (devices.isEmpty) _startStatusTimer();
     });
 
     debugPrint("STARTING BLE SCAN");
-    await bleService.startScan();
+    await _batteryProvider.bleService.startScan();
 
     await Future.delayed(const Duration(seconds: 5));
-
     if (!mounted) return;
-    
-    _stopStatusTimer(); // Stop the text animation when done
+
+    _stopStatusTimer();
     setState(() {
-      devices = bleService.devices;
+      devices = _batteryProvider.bleService.devices;
       isScanning = false;
     });
     debugPrint("DEVICES FOUND: ${devices.length}");
@@ -158,25 +163,16 @@ class _ConnectScreenState extends State<ConnectScreen> with SingleTickerProvider
   Future<void> connectDevice(BluetoothDevice device) async {
     if (isConnecting) return;
 
-    // If they manually connect, trigger the radar view again
     setState(() {
       isConnecting = true;
       _startStatusTimer();
     });
 
     try {
-      await bleService.stopScan();
-      await bleService.connect(device);
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(backgroundColor: Colors.green, content: Text("Connected to ${device.platformName}")),
-      );
-
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const MyHomePage()),
-      );
+      await _batteryProvider.bleService.stopScan();
+      await _batteryProvider.bleService.connect(device);
+      // NOTE: We don't call Navigator.push() here anymore!
+      // _onBatteryProviderChanged will automatically detect the success and push the screen for us.
     } catch (e) {
       if (!mounted) return;
       _stopStatusTimer();
@@ -188,7 +184,7 @@ class _ConnectScreenState extends State<ConnectScreen> with SingleTickerProvider
   }
 
   // =========================================================
-  // UI
+  // UI LAYOUT
   // =========================================================
   @override
   Widget build(BuildContext context) {
@@ -202,12 +198,13 @@ class _ConnectScreenState extends State<ConnectScreen> with SingleTickerProvider
         appBar: AppBar(
           backgroundColor: Colors.transparent,
           elevation: 0,
+          systemOverlayStyle: SystemUiOverlayStyle.dark,
           title: const Text(
             "Scooby ",
             style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.black),
           ),
           actions: [
-            if (!isConnecting) // Hide refresh when radar is active
+            if (!isConnecting)
               IconButton(
                 onPressed: startScan,
                 icon: isScanning
@@ -216,7 +213,6 @@ class _ConnectScreenState extends State<ConnectScreen> with SingleTickerProvider
               ),
           ],
         ),
-        // Switch between the cinematic view and the manual list
         body: isConnecting || (isScanning && devices.isEmpty)
             ? _buildCinematicConnectingView()
             : (devices.isEmpty ? _buildEmptyState() : _buildDeviceList()),
@@ -225,14 +221,13 @@ class _ConnectScreenState extends State<ConnectScreen> with SingleTickerProvider
   }
 
   // =========================================================
-  // THE NEW CINEMATIC RADAR VIEW
+  // CINEMATIC RADAR VIEW
   // =========================================================
   Widget _buildCinematicConnectingView() {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // RADAR ANIMATION STACK
           SizedBox(
             width: 300,
             height: 300,
@@ -251,7 +246,6 @@ class _ConnectScreenState extends State<ConnectScreen> with SingleTickerProvider
                     );
                   },
                 ),
-                // The scooter image sitting in the center
                 Image.asset(
                   'lib/assets/scooty.png',
                   width: 180,
@@ -261,8 +255,6 @@ class _ConnectScreenState extends State<ConnectScreen> with SingleTickerProvider
             ),
           ),
           const SizedBox(height: 50),
-
-          // PROGRESSIVE STATUS TEXT
           AnimatedSwitcher(
             duration: const Duration(milliseconds: 500),
             transitionBuilder: (Widget child, Animation<double> animation) {
@@ -279,7 +271,7 @@ class _ConnectScreenState extends State<ConnectScreen> with SingleTickerProvider
             },
             child: Text(
               _statusMessages[_statusIndex],
-              key: ValueKey<int>(_statusIndex), // Forces AnimatedSwitcher to trigger
+              key: ValueKey<int>(_statusIndex),
               style: const TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
@@ -311,7 +303,13 @@ class _ConnectScreenState extends State<ConnectScreen> with SingleTickerProvider
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(22),
-        boxShadow: [BoxShadow(color: Colors.grey.withAlpha(25), blurRadius: 10, offset: const Offset(0, 5))],
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withAlpha(25),
+            blurRadius: 10,
+            offset: const Offset(0, 5),
+          )
+        ],
       ),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
@@ -365,17 +363,13 @@ class RadarPainter extends CustomPainter {
     final center = Offset(size.width / 2, size.height / 2);
     final maxRadius = size.width / 2;
 
-    // Draw 3 distinct ripples
     for (int i = 0; i < 3; i++) {
-      // Offset each ripple's progress so they follow each other
       final rippleProgress = (progress + (i * 0.33)) % 1.0;
       final radius = maxRadius * rippleProgress;
-
-      // Fade out as it expands
       final opacity = (1.0 - rippleProgress).clamp(0.0, 1.0);
 
       final paint = Paint()
-        ..color = color.withValues(alpha: opacity * 0.4) // Base opacity dialed down for a softer glow
+        ..color = color.withValues(alpha: opacity * 0.4)
         ..style = PaintingStyle.fill;
 
       canvas.drawCircle(center, radius, paint);
