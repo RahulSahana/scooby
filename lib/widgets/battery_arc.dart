@@ -118,9 +118,9 @@ class ArcPainter extends CustomPainter {
 }
 
 Color _getBatteryColor(double p) {
-  if (p > 0.5) {
+  if (p > 0.6) {
     return Colors.green;
-  } else if (p > 0.2) {
+  } else if (p > 0.3) {
     return Colors.orangeAccent;
   }
   return Colors.red;

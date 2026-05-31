@@ -57,9 +57,10 @@ class Scooby extends StatelessWidget {
           statusBarIconBrightness: Brightness.dark,
           statusBarBrightness: Brightness.light,
         ),
-        child: ConnectScreen(),
+        //child: ConnectScreen(),
         //child: ChargeScreen(),
         //child: ProfileScreen(),
+        child: HomeScreen(),
       ),
     );
   }

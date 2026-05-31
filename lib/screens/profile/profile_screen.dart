@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../providers/battery_provider.dart';
-import '../connect/connect_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -237,27 +236,45 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // ==========================================
+                  // DYNAMIC PROFILE HEADER
+                  // ==========================================
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: const BoxDecoration(color: Color(0xFFE2D4F8), shape: BoxShape.circle),
-                            child: Text(_userAvatar, style: const TextStyle(fontSize: 32)),
-                          ),
-                          const SizedBox(width: 16),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(_userName, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.black87)),
-                              const SizedBox(height: 4),
-                              Text(_userDesc, style: TextStyle(fontSize: 13, color: Colors.grey[600], fontWeight: FontWeight.w500)),
-                            ],
-                          ),
-                        ],
+                      // 1. Fixed Size Avatar
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: const BoxDecoration(color: Color(0xFFE2D4F8), shape: BoxShape.circle),
+                        child: Text(_userAvatar, style: const TextStyle(fontSize: 32)),
                       ),
+
+                      const SizedBox(width: 16),
+
+                      // 2. Expanded Text Column (This stops the overflow!)
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _userName,
+                              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.black87),
+                              // Allows long names/large fonts to wrap to a second line instead of pushing widgets
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              _userDesc,
+                              style: TextStyle(fontSize: 13, color: Colors.grey[600], fontWeight: FontWeight.w500),
+                              // Same protection for the description
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      // 3. Fixed Size Edit Button
                       IconButton(
                         icon: const Icon(Icons.edit, color: Color(0xFF8B5CF6)),
                         onPressed: _showEditProfileDialog,
@@ -391,7 +408,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           subtitle: Text(battery.isDischarging ? 'Enabled' : 'Disabled (Immobilized)', style: TextStyle(color: battery.isDischarging ? Colors.green : Colors.red)),
                           trailing: Switch(
                             value: battery.isDischarging,
-                            activeColor: Colors.blue,
+                            activeThumbColor: Colors.blue,
                             onChanged: (val) => batteryProvider.toggleDischarging(val),
                           ),
                         ),
@@ -407,7 +424,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           subtitle: Text(battery.isCharging ? 'Accepting Current' : 'Cutoff Active', style: TextStyle(color: battery.isCharging ? Colors.green : Colors.orange)),
                           trailing: Switch(
                             value: battery.isCharging,
-                            activeColor: Colors.green,
+                            activeThumbColor: Colors.green,
                             onChanged: (val) => batteryProvider.toggleCharging(val),
                           ),
                         ),
