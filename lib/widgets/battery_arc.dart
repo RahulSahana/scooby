@@ -49,7 +49,7 @@ class BatteryArc extends StatelessWidget {
         ),
         const SizedBox(height: 10),
         Text(
-          '${(percentage * 100).toInt()}% Battery',
+          '${(percentage * 100)}% Battery',
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.w500,
