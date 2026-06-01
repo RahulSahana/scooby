@@ -194,17 +194,64 @@ class JkCommandService {
   // AUTHORIZATION HANDSHAKE
   // =========================================================
 
+  Future<void> toggleMosfetSafe(BluetoothCharacteristic characteristic, String password, bool turnOn) async {
+    try {
+      // 1. (Optional but recommended) Set a boolean in your provider to temporarily stop
+      // the 'CELL INFO REQUEST' loop from firing while we do this.
+      // batteryProvider.pauseTelemetryLoop = true;
+
+      debugPrint('1. Sending Authorization...');
+      await sendAuthorization(characteristic, password); // Your padded 16-byte password
+
+      // 2. CRITICAL FIX: The BMS needs time to unlock.
+      // Force the app to wait half a second.
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      debugPrint('2. Sending Toggle Command...');
+      // 3. Send your actual MOSFET command
+      // Example: 0x1D is usually the register for Charge MOSFET on JK
+      // payload must be EXACTLY 4 bytes! e.g., [0x01, 0x00, 0x00, 0x00] for ON
+      final commandPayload = turnOn ? [0x01, 0x00, 0x00, 0x00] : [0x00, 0x00, 0x00, 0x00];
+
+      // THE CRITICAL FIX: Pad the data to exactly 12 bytes!
+      // This ensures buildWriteCommand generates a perfect 20-byte packet.
+      // (Header 4 + Cmd 1 + Reg 1 + Len 1 + Payload 12 + CRC 1 = 20)
+      while (commandPayload.length < 12) {
+        commandPayload.add(0x00);
+      }
+
+      final toggleCommand = buildWriteCommand(0x1D, commandPayload);
+
+      await characteristic.write(toggleCommand, withoutResponse: false);
+      debugPrint('3. Toggle Command Sent (20-Byte Padded)!');
+
+      // 4. Wait a tiny bit for it to process the toggle before asking for data again
+      await Future.delayed(const Duration(milliseconds: 300));
+
+      // 5. Resume your telemetry loop so the UI updates
+      // batteryProvider.pauseTelemetryLoop = false;
+
+    } catch (e) {
+      debugPrint('TOGGLE ERROR: $e');
+    }
+  }
+
   Future<void> sendAuthorization(BluetoothCharacteristic characteristic, String password) async {
     try {
       // Converts the string (e.g. "1234" or "802626052E") into raw ASCII bytes
-      final passwordBytes = password.codeUnits;
+      final passwordBytes = password.codeUnits.toList();
+
+      // Pad password to 12 bytes for 20-byte frame consistency
+      while (passwordBytes.length < 12) {
+        passwordBytes.add(0x00);
+      }
 
       // Register 0x00 is the authorization register
       final command = buildWriteCommand(0x00, passwordBytes);
 
       await characteristic.write(command, withoutResponse: false);
 
-      debugPrint('AUTHORIZATION HANDSHAKE SENT: 802626052E');
+      debugPrint('AUTHORIZATION HANDSHAKE SENT (20-Byte Padded): 802626052E');
     } catch (e) {
       debugPrint('AUTHORIZATION ERROR: $e');
     }
@@ -216,16 +263,19 @@ class JkCommandService {
 
   Future<void> setChargeMosfet(BluetoothCharacteristic characteristic, bool enable) async {
     try {
-      // FIX: The BMS strictly expects 4 bytes for register values!
-      // 0x01, 0x00, 0x00, 0x00 (ON) | 0x00, 0x00, 0x00, 0x00 (OFF)
+      // FIX: 4-byte strict payload padded to 12 for 20-byte frame
       final valueBytes = enable ? [0x01, 0x00, 0x00, 0x00] : [0x00, 0x00, 0x00, 0x00];
+
+      while (valueBytes.length < 12) {
+        valueBytes.add(0x00);
+      }
 
       // Register 0x1D is typically the Charge MOSFET setting
       final command = buildWriteCommand(0x1D, valueBytes);
 
       // FIX: Force to false so the phone's Bluetooth stack guarantees delivery
       await characteristic.write(command, withoutResponse: false);
-      debugPrint('SENT CHARGE MOSFET TOGGLE: ${enable ? "ON" : "OFF"}');
+      debugPrint('SENT CHARGE MOSFET TOGGLE (20-Byte Padded): ${enable ? "ON" : "OFF"}');
     } catch (e) {
       debugPrint('CHARGE TOGGLE ERROR: $e');
     }
@@ -237,14 +287,18 @@ class JkCommandService {
 
   Future<void> setDischargeMosfet(BluetoothCharacteristic characteristic, bool enable) async {
     try {
-      // FIX: 4-byte strict payload
+      // FIX: 4-byte strict payload padded to 12 for 20-byte frame
       final valueBytes = enable ? [0x01, 0x00, 0x00, 0x00] : [0x00, 0x00, 0x00, 0x00];
+
+      while (valueBytes.length < 12) {
+        valueBytes.add(0x00);
+      }
 
       // 0x1E is the JK register for the Discharge MOSFET
       final command = buildWriteCommand(0x1E, valueBytes);
 
       await characteristic.write(command, withoutResponse: false);
-      debugPrint('SENT DISCHARGE MOSFET TOGGLE: ${enable ? "ON" : "OFF"}');
+      debugPrint('SENT DISCHARGE MOSFET TOGGLE (20-Byte Padded): ${enable ? "ON" : "OFF"}');
     } catch (e) {
       debugPrint('DISCHARGE TOGGLE ERROR: $e');
     }

@@ -16,7 +16,7 @@ class HomeScreen extends StatelessWidget {
   }
 
   Color _getBatteryColor(num soc) {
-    if (soc >= 60) {
+    if (soc >= 55) {
       return Colors.green;
     } else if (soc >= 30) {
       return Colors.orangeAccent;
@@ -52,14 +52,14 @@ class HomeScreen extends StatelessWidget {
                   children: [
                     // 1. THE SCOOTER MEDIA LAYER
                     Center(
-                      child: battery.current <= 0.6 ? Image.asset('lib/assets/scooty.png', height: 250) : _MotionScooterDisplay(imagePath: 'lib/assets/scooty.png', height: 250),
+                      child: battery.current <= -0.6 ? _MotionScooterDisplay(imagePath: 'lib/assets/scooty.png', height: 250) : Image.asset('lib/assets/scooty.png', height: 250),
                     ),
 
                     // ===================================================
                     // BATTERY ARC
                     // ===================================================
                     BatteryArc(
-                      percentage: battery.soc / 100,
+                      percentage: battery.soc,
                       range: battery.range.toInt(),
                     ),
 

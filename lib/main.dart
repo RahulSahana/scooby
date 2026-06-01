@@ -57,10 +57,8 @@ class Scooby extends StatelessWidget {
           statusBarIconBrightness: Brightness.dark,
           statusBarBrightness: Brightness.light,
         ),
-        //child: ConnectScreen(),
-        //child: ChargeScreen(),
-        //child: ProfileScreen(),
-        child: HomeScreen(),
+        child: ConnectScreen(),
+        //child: HomeScreen(),
       ),
     );
   }
@@ -74,24 +72,45 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  int selectedIndex = 0;
+  late PageController _pageController;
+  int _selectedIndex = 0;
 
-  final List<Widget> screens = [
+  final List<Widget> _screens = [
     const HomeScreen(),
     const ChargeScreen(),
     const ProfileScreen(),
   ];
 
-  void onItemTapped(int index) {
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController(initialPage: _selectedIndex);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  void _onItemTapped(int index) {
+    _pageController.animateToPage(
+      index,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+    );
+  }
+
+  void _onPageChanged(int index) {
     setState(() {
-      selectedIndex = index;
+      _selectedIndex = index;
     });
   }
 
   @override
   Widget build(BuildContext context) {
     // Dynamic Status Bar Brightness based on screen (Charge/Profile are Dark)
-    final isDarkScreen = selectedIndex == 1 || selectedIndex == 2;
+    final isDarkScreen = _selectedIndex == 1 || _selectedIndex == 2;
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle(
@@ -120,11 +139,16 @@ class _MyHomePageState extends State<MyHomePage> {
             ),
           ],
         ),
-        body: screens[selectedIndex],
+        body: PageView(
+          controller: _pageController,
+          onPageChanged: _onPageChanged,
+          physics: const BouncingScrollPhysics(),
+          children: _screens,
+        ),
         bottomNavigationBar: BottomNavigationBar(
-          currentIndex: selectedIndex,
+          currentIndex: _selectedIndex,
           selectedItemColor: Colors.deepPurple,
-          onTap: onItemTapped,
+          onTap: _onItemTapped,
           items: const <BottomNavigationBarItem>[
             BottomNavigationBarItem(
               icon: Icon(Icons.electric_bike_outlined),

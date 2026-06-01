@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/services.dart';
 
 import '../../providers/battery_provider.dart';
+import '../../core/utils/jk_code_generator.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -216,6 +218,58 @@ class _ProfileScreenState extends State<ProfileScreen> {
     ).whenComplete(() => provider.bleService.stopScan());
   }
 
+  // ==========================================
+  // HARDWARE ROW HELPER WIDGET
+  // ==========================================
+  Widget _buildHardwareRow(BuildContext context, String label, String value, {bool isHighlight = false, bool isCopyable = false}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: const TextStyle(color: Colors.white70, fontSize: 14)),
+
+        // Wrap the value in a Row so we can put an icon next to it
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+                value,
+                style: TextStyle(
+                    color: isHighlight ? Colors.greenAccent : Colors.white,
+                    fontSize: 14,
+                    fontWeight: isHighlight ? FontWeight.bold : FontWeight.normal
+                )
+            ),
+
+            // If isCopyable is true, show the copy icon
+            if (isCopyable) ...[
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: () async {
+                  // 1. Copy to phone clipboard
+                  await Clipboard.setData(ClipboardData(text: value));
+
+                  // 2. Show a sleek confirmation popup
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('$label copied to clipboard!'),
+                        duration: const Duration(seconds: 2),
+                        behavior: SnackBarBehavior.floating,
+                        backgroundColor: const Color(0xFF8B5CF6), // Your premium purple
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                    );
+                  }
+                },
+                child: const Icon(Icons.copy, size: 16, color: Colors.white54),
+              ),
+            ]
+          ],
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final batteryProvider = context.watch<BatteryProvider>();
@@ -291,14 +345,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Container(
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: const Color(0xFF1E293B),
                       borderRadius: BorderRadius.circular(20),
                       boxShadow: [BoxShadow(color: Colors.grey.withValues(alpha: 0.08), blurRadius: 15, offset: const Offset(0, 5))],
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('Primary Scooter', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+                        const Text('Primary Scooter', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16, color: Colors.green)),
                         const SizedBox(height: 8),
                         Text('The app will prioritize auto-connecting to this address on launch.', style: TextStyle(color: Colors.grey[500], fontSize: 13)),
                         const SizedBox(height: 16),
@@ -379,6 +433,60 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ),
                           ],
                         ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+
+                  // ==========================================
+                  // ABOUT BMS (Hardware Info)
+                  // ==========================================
+                  const Text('ABOUT BMS', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.5, color: Colors.grey)),
+                  const SizedBox(height: 16),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1E293B), // Premium dark card like the official app
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [BoxShadow(color: Colors.grey.withValues(alpha: 0.1), blurRadius: 15, offset: const Offset(0, 5))],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        _buildHardwareRow(context, 'Vendor ID', battery.vendorId, isHighlight: true, isCopyable: true),
+                        const SizedBox(height: 12),
+                        _buildHardwareRow(context, 'Serial No.', battery.serialNumber, isCopyable: true),
+                        const SizedBox(height: 12),
+                        ElevatedButton(
+                          onPressed: () {
+                            // 1. Get the current time for the Update Code
+                            final now = DateTime.now();
+                            String updateCode = JkCodeGenerator.generateForceUpdateCode(now);
+
+                            // 2. Test your specific serial number
+                            // We pass the RAW serial before we formatted it, just like the website expects
+                            String myRawSerial = '26050550930AM62139829';
+                            String settingsPass = JkCodeGenerator.generateSettingsPassword(myRawSerial);
+
+                            // 3. Print the results to the debug console
+                            debugPrint('=== JK GENERATOR TEST ===');
+                            debugPrint('Website Update Code should be roughly: $updateCode');
+                            debugPrint('Website Settings Pass should be: $settingsPass');
+                            debugPrint('=========================');
+                          },
+                          child: const Text('Test Password Generator'),
+                        ),
+                        const SizedBox(height: 12),
+                        _buildHardwareRow(context, 'Hardware Ver.', battery.hardwareVersion),
+                        const SizedBox(height: 12),
+                        _buildHardwareRow(context, 'Software Ver.', battery.softwareVersion),
+                        const SizedBox(height: 12),
+                        _buildHardwareRow(context, 'First On Date', battery.firstOnDate),
+                        const SizedBox(height: 12),
+                        _buildHardwareRow(context, 'Total Uptime', battery.totalTime),
+                        const SizedBox(height: 24),
+                        const Text('WWW.JK-BMS.COM', style: TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold, letterSpacing: 1.2, fontSize: 12)),
                       ],
                     ),
                   ),

@@ -28,6 +28,7 @@ class BleService {
   Timer? pollingTimer;
   Timer? _autoReconnectTimer;
   bool _isIntentionallyDisconnected = false;
+  bool isHardwareCommandPending = false;
 
   // =========================================================
   // SCANNING
@@ -179,6 +180,12 @@ class BleService {
     pollingTimer?.cancel();
     pollingTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
       if (jkCharacteristic == null) return;
+
+      if (isHardwareCommandPending) {
+        debugPrint('Skipping Telemetry: Hardware command in progress...');
+        return;
+      }
+
       try {
         await _commandService.sendCellInfoRequest(jkCharacteristic!);
       } catch (e) {
@@ -239,7 +246,9 @@ class BleService {
   void _processFrame(List<int> frame) {
     if (!JkBmsParser.isValidHeader(frame) || !JkBmsParser.isValidCrc(frame)) return;
 
-    if (JkBmsParser.frameType(frame) == 0x02) {
+    final frameType = JkBmsParser.frameType(frame);
+
+    if (frameType == 0x02) {
       final batteryData = JkBmsParser.parseBatteryData(frame);
       batteryProvider.updateTelemetry(
         voltage: batteryData.voltage,
@@ -253,6 +262,18 @@ class BleService {
         power: batteryData.power,
         isConnected: true,
       );
+    } else if (frameType == 0x03) {
+      // 🟢 CATCH THE NEW DEVICE INFO FRAME
+      final deviceInfo = JkBmsParser.parseDeviceInfo(frame);
+
+      batteryProvider.updateTelemetry(
+        vendorId: deviceInfo['vendorId'],
+        hardwareVersion: deviceInfo['hardwareVersion'],
+        softwareVersion: deviceInfo['softwareVersion'],
+        serialNumber: deviceInfo['serialNumber'],
+        firstOnDate: deviceInfo['firstOnDate'],
+        totalTime: deviceInfo['totalTime'],
+      );
     }
   }
 
@@ -263,26 +284,32 @@ class BleService {
   Future<void> toggleChargeMosfet(bool enable) async {
     if (jkCharacteristic == null) return;
     try {
+      isHardwareCommandPending = true;
       await _commandService.sendAuthorization(jkCharacteristic!, batteryProvider.bmsPassword);
-      await Future.delayed(const Duration(milliseconds: 200));
+      await Future.delayed(const Duration(milliseconds: 500));
       await _commandService.setChargeMosfet(jkCharacteristic!, enable);
-      await Future.delayed(const Duration(milliseconds: 300));
+      await Future.delayed(const Duration(milliseconds: 500));
       await _commandService.sendCellInfoRequest(jkCharacteristic!);
     } catch (e) {
       debugPrint('CHARGE TOGGLE FAILED: $e');
+    } finally {
+      isHardwareCommandPending = false;
     }
   }
 
   Future<void> toggleDischargeMosfet(bool enable) async {
     if (jkCharacteristic == null) return;
     try {
+      isHardwareCommandPending = true;
       await _commandService.sendAuthorization(jkCharacteristic!, batteryProvider.bmsPassword);
-      await Future.delayed(const Duration(milliseconds: 200));
+      await Future.delayed(const Duration(milliseconds: 500));
       await _commandService.setDischargeMosfet(jkCharacteristic!, enable);
-      await Future.delayed(const Duration(milliseconds: 300));
+      await Future.delayed(const Duration(milliseconds: 500));
       await _commandService.sendCellInfoRequest(jkCharacteristic!);
     } catch (e) {
       debugPrint('DISCHARGE TOGGLE FAILED: $e');
+    } finally {
+      isHardwareCommandPending = false;
     }
   }
 

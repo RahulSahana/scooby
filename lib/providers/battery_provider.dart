@@ -41,6 +41,14 @@ class BatteryProvider extends ChangeNotifier {
     bool? isDischarging,
     double? power,
     bool? isConnected,
+    String? vendorId,
+    String? hardwareVersion,
+    String? softwareVersion,
+    int? powerOnTimes,
+    String? uptime,
+    String? serialNumber,
+    String? firstOnDate,
+    String? totalTime,
   }) {
     _batteryData = _batteryData.copyWith(
       voltage: voltage,
@@ -53,6 +61,14 @@ class BatteryProvider extends ChangeNotifier {
       isDischarging: isDischarging,
       cellVoltages: cellVoltages,
       isConnected: isConnected ?? _isConnected,
+      vendorId: vendorId ?? _batteryData.vendorId,
+      hardwareVersion: hardwareVersion ?? _batteryData.hardwareVersion,
+      softwareVersion: softwareVersion ?? _batteryData.softwareVersion,
+      powerOnTimes: powerOnTimes ?? _batteryData.powerOnTimes,
+      uptime: uptime ?? _batteryData.uptime,
+      serialNumber: serialNumber ?? _batteryData.serialNumber,
+      firstOnDate: firstOnDate ?? _batteryData.firstOnDate,
+      totalTime: totalTime ?? _batteryData.totalTime,
     );
 
     if (isConnected != null) _isConnected = isConnected;

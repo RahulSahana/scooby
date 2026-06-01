@@ -431,4 +431,46 @@ class JkBmsParser {
       cellVoltages: parseCellVoltages(frame),
     );
   }
+
+  // =========================================================
+  // PARSE DEVICE INFO (FRAME TYPE 0x03)
+  // =========================================================
+  static Map<String, dynamic> parseDeviceInfo(List<int> frame) {
+    try {
+      // 1. Safe ASCII Extractor
+      String extractString(int start, int length) {
+        if (start + length > frame.length) return 'Unknown';
+        final bytes = frame.sublist(start, start + length);
+        final cleanBytes = bytes.where((b) => b >= 32 && b <= 126).toList(); // Only valid text characters
+        return String.fromCharCodes(cleanBytes).trim();
+      }
+
+      // 2. Hardware Hacker Debugging:
+      // Uncomment this to see the raw text layout in your console if the strings are cut off!
+      // debugPrint('RAW 0x03 ASCII: ${extractString(0, frame.length)}');
+
+      // 3. Uptime Math (JK sends uptime as raw seconds in 4 bytes, usually around byte index 67)
+      String formatUptime(int start) {
+        if (start + 3 >= frame.length) return 'Unknown';
+        int rawSeconds = (frame[start] << 24) | (frame[start+1] << 16) | (frame[start+2] << 8) | frame[start+3];
+
+        int days = rawSeconds ~/ 86400;
+        int hours = (rawSeconds % 86400) ~/ 3600;
+        int minutes = (rawSeconds % 3600) ~/ 60;
+        return '${days}D ${hours}H ${minutes}M';
+      }
+
+      return {
+        'vendorId': extractString(11, 15),          // e.g., "JK_BD6A24S4PD"
+        'hardwareVersion': extractString(27, 8),    // e.g., "V20H"
+        'softwareVersion': extractString(35, 8),    // e.g., "V20.11"
+        'serialNumber': extractString(84, 17),      // e.g., "50930AM62139829"
+        'firstOnDate': extractString(78, 6),       // e.g., "2026-05-05"
+        'totalTime': formatUptime(67),              // Math conversion from raw seconds
+      };
+    } catch (e) {
+      debugPrint('Error parsing Device Info: $e');
+      return {};
+    }
+  }
 }

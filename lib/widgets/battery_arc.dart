@@ -2,7 +2,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 
 class BatteryArc extends StatelessWidget {
-  final double percentage; // 0.0 to 1.0
+  final int percentage; // 0.0 to 1.0
   final int range;
 
   const BatteryArc({
@@ -20,8 +20,8 @@ class BatteryArc extends StatelessWidget {
           alignment: Alignment.center,
           children: [
             CustomPaint(
-              size: const Size(200, 100),
-              painter: ArcPainter(percentage: percentage),
+              size: const Size(230, 120),
+              painter: ArcPainter(percentage: percentage/100),
             ),
             Positioned(
               bottom: 10,
@@ -32,14 +32,22 @@ class BatteryArc extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 32,
                       fontWeight: FontWeight.bold,
-                      color: _getBatteryColor(percentage),
+                      color: _getBatteryColor(percentage/100),
                     ),
                   ),
                   Text(
                     'km range',
                     style: TextStyle(
                       fontSize: 14,
-                      color: _getBatteryColor(percentage),
+                      color: _getBatteryColor(percentage/100),
+                    ),
+                  ),
+                  Text(
+                    '$percentage% Battery',
+                    style: TextStyle(
+                      fontSize: 25,
+                      fontWeight: FontWeight.w500,
+                      color: _getBatteryColor(percentage/100),
                     ),
                   ),
                 ],
@@ -48,14 +56,7 @@ class BatteryArc extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 10),
-        Text(
-          '${(percentage * 100)}% Battery',
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w500,
-            color: _getBatteryColor(percentage),
-          ),
-        ),
+
       ],
     );
   }
@@ -118,7 +119,7 @@ class ArcPainter extends CustomPainter {
 }
 
 Color _getBatteryColor(double p) {
-  if (p > 0.6) {
+  if (p > 0.55) {
     return Colors.green;
   } else if (p > 0.3) {
     return Colors.orangeAccent;
