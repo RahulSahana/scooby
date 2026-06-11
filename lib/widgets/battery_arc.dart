@@ -20,7 +20,7 @@ class BatteryArc extends StatelessWidget {
           alignment: Alignment.center,
           children: [
             CustomPaint(
-              size: const Size(230, 120),
+              size: const Size(240, 120),
               painter: ArcPainter(percentage: percentage/100),
             ),
             Positioned(
@@ -30,7 +30,7 @@ class BatteryArc extends StatelessWidget {
                   Text(
                     rangeStr,
                     style: TextStyle(
-                      fontSize: 32,
+                      fontSize: 25,
                       fontWeight: FontWeight.bold,
                       color: _getBatteryColor(percentage/100),
                     ),
