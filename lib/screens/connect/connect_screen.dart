@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
@@ -15,7 +16,8 @@ class ConnectScreen extends StatefulWidget {
   State<ConnectScreen> createState() => _ConnectScreenState();
 }
 
-class _ConnectScreenState extends State<ConnectScreen> with SingleTickerProviderStateMixin {
+class _ConnectScreenState extends State<ConnectScreen>
+    with SingleTickerProviderStateMixin {
   // =========================================================
   // BLE SERVICE & STATES
   // =========================================================
@@ -37,6 +39,8 @@ class _ConnectScreenState extends State<ConnectScreen> with SingleTickerProvider
     "Scanning for vehicle...",
     "Establishing secure link...",
     "Syncing telemetry...",
+    "Thanks For Using Scooby! 💝",
+    "Happy Durga Puja",
   ];
 
   // =========================================================
@@ -75,15 +79,24 @@ class _ConnectScreenState extends State<ConnectScreen> with SingleTickerProvider
   // APP LOGIC
   // =========================================================
   Future<void> _initializeApp() async {
+    if (!await checkBluetoothSupport()) return;
+
     await requestPermissions();
     if (!mounted) return;
 
-    // Start the cinematic connection sequence
+    // Web Bluetooth restriction: Scanning MUST be triggered by user interaction.
+    // We skip automatic scanning/connecting on Web boot.
+    if (kIsWeb) {
+      setState(() => isConnecting = false);
+      return;
+    }
+
+    // Start the cinematic connection sequence for mobile
     setState(() => isConnecting = true);
     _startStatusTimer();
 
     // Attempt auto-connect
-    final autoConnectSuccess = await _batteryProvider.bleService.autoConnect(license: License.free);
+    final autoConnectSuccess = await _batteryProvider.bleService.autoConnect();
 
     if (!autoConnectSuccess && mounted) {
       _stopStatusTimer();
@@ -116,7 +129,10 @@ class _ConnectScreenState extends State<ConnectScreen> with SingleTickerProvider
     _statusTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
       if (!mounted) return;
       setState(() {
-        if (_statusIndex < _statusMessages.length - 1) {
+        if (_statusIndex  == _statusMessages.length - 1) {
+          _statusIndex=0;
+        }
+        if (_statusIndex  < _statusMessages.length - 1) {
           _statusIndex++;
         }
       });
@@ -131,11 +147,33 @@ class _ConnectScreenState extends State<ConnectScreen> with SingleTickerProvider
   // HARDWARE PIPELINE
   // =========================================================
   Future<void> requestPermissions() async {
+    if (kIsWeb) return; // Web Bluetooth handled by browser chooser
+
     await [
       Permission.bluetoothScan,
       Permission.bluetoothConnect,
       Permission.location,
     ].request();
+  }
+
+  Future<bool> checkBluetoothSupport() async {
+    if (kIsWeb) {
+      if (!await FlutterBluePlus.isSupported) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                "Bluetooth is not supported in this browser. "
+                    "Please use Chrome or Edge.",
+              ),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return false;
+      }
+    }
+    return true;
   }
 
   Future<void> startScan() async {
@@ -146,7 +184,6 @@ class _ConnectScreenState extends State<ConnectScreen> with SingleTickerProvider
       if (devices.isEmpty) _startStatusTimer();
     });
 
-    debugPrint("STARTING BLE SCAN");
     await _batteryProvider.bleService.startScan();
 
     await Future.delayed(const Duration(seconds: 5));
@@ -172,13 +209,17 @@ class _ConnectScreenState extends State<ConnectScreen> with SingleTickerProvider
       await _batteryProvider.bleService.stopScan();
       await _batteryProvider.bleService.connect(device);
       // NOTE: We don't call Navigator.push() here anymore!
-      // _onBatteryProviderChanged will automatically detect the success and push the screen for us.
+      // _onBatteryProviderChanged will automatically detect the success
+      // and push the screen for us.
     } catch (e) {
       if (!mounted) return;
       _stopStatusTimer();
       setState(() => isConnecting = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(backgroundColor: Colors.red, content: Text("Connection Failed")),
+        const SnackBar(
+          backgroundColor: Colors.red,
+          content: Text("Connection Failed"),
+        ),
       );
     }
   }
@@ -191,7 +232,10 @@ class _ConnectScreenState extends State<ConnectScreen> with SingleTickerProvider
     return Theme(
       data: ThemeData(
         brightness: Brightness.light,
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple, brightness: Brightness.light),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.teal,
+          brightness: Brightness.light,
+        ),
       ),
       child: Scaffold(
         backgroundColor: Colors.grey[50],
@@ -201,15 +245,23 @@ class _ConnectScreenState extends State<ConnectScreen> with SingleTickerProvider
           systemOverlayStyle: SystemUiOverlayStyle.dark,
           title: const Text(
             "Scooby ",
-            style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.black),
+            style: TextStyle(
+              fontSize: 28,
+              fontWeight: FontWeight.bold,
+              color: Colors.teal,
+            ),
           ),
           actions: [
             if (!isConnecting)
               IconButton(
                 onPressed: startScan,
                 icon: isScanning
-                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.refresh, color: Colors.deepPurple),
+                    ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+                    : const Icon(Icons.refresh, color: Colors.teal),
               ),
           ],
         ),
@@ -226,8 +278,15 @@ class _ConnectScreenState extends State<ConnectScreen> with SingleTickerProvider
   Widget _buildCinematicConnectingView() {
     return Center(
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisAlignment: MainAxisAlignment.start,
         children: [
+          Image.asset(
+            'lib/assets/Durga.png',
+            width: 300,
+            height: 300,
+            fit: BoxFit.contain,
+          ),
+          const SizedBox(height: 8),
           SizedBox(
             width: 300,
             height: 300,
@@ -241,7 +300,7 @@ class _ConnectScreenState extends State<ConnectScreen> with SingleTickerProvider
                       size: const Size(300, 300),
                       painter: RadarPainter(
                         progress: _radarController.value,
-                        color: Colors.deepPurple,
+                        color: Colors.teal,
                       ),
                     );
                   },
@@ -275,7 +334,7 @@ class _ConnectScreenState extends State<ConnectScreen> with SingleTickerProvider
               style: const TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
-                color: Colors.deepPurple,
+                color: Colors.teal,
                 letterSpacing: 0.5,
               ),
             ),
@@ -297,7 +356,9 @@ class _ConnectScreenState extends State<ConnectScreen> with SingleTickerProvider
   }
 
   Widget _buildDeviceCard(BluetoothDevice device) {
-    final name = device.platformName.isEmpty ? "Unknown Device" : device.platformName;
+    final name =
+    device.platformName.isEmpty ? "Unknown Device" : device.platformName;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
       decoration: BoxDecoration(
@@ -308,26 +369,47 @@ class _ConnectScreenState extends State<ConnectScreen> with SingleTickerProvider
             color: Colors.grey.withAlpha(25),
             blurRadius: 10,
             offset: const Offset(0, 5),
-          )
+          ),
         ],
       ),
       child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 20,
+          vertical: 10,
+        ),
         leading: CircleAvatar(
           radius: 28,
           backgroundColor: Colors.deepPurple.withAlpha(20),
-          child: const Icon(Icons.electric_bike_outlined, color: Colors.deepPurple, size: 28),
+          child: const Icon(
+            Icons.electric_bike_outlined,
+            color: Colors.teal,
+            size: 28,
+          ),
         ),
-        title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-        subtitle: Text(device.remoteId.str, style: TextStyle(color: Colors.grey[500], fontSize: 12)),
+        title: Text(
+          name,
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 18,
+          ),
+        ),
+        subtitle: Text(
+          device.remoteId.str,
+          style: TextStyle(color: Colors.grey[500], fontSize: 12),
+        ),
         trailing: ElevatedButton(
           style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.deepPurple,
+            backgroundColor: Colors.teal,
             foregroundColor: Colors.white,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
           ),
           onPressed: () => connectDevice(device),
-          child: const Text("Connect", style: TextStyle(fontWeight: FontWeight.bold)),
+          child: const Text(
+            "Connect",
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
         ),
       ),
     );
@@ -338,11 +420,25 @@ class _ConnectScreenState extends State<ConnectScreen> with SingleTickerProvider
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.bluetooth_disabled, size: 90, color: Colors.grey[300]),
+          Icon(
+            Icons.bluetooth_disabled,
+            size: 90,
+            color: Colors.grey[300],
+          ),
           const SizedBox(height: 20),
-          Text("No BLE Devices Found", style: TextStyle(fontSize: 18, color: Colors.grey[600], fontWeight: FontWeight.w600)),
+          Text(
+            "No BLE Devices Found",
+            style: TextStyle(
+              fontSize: 18,
+              color: Colors.grey[600],
+              fontWeight: FontWeight.w600,
+            ),
+          ),
           const SizedBox(height: 10),
-          TextButton(onPressed: startScan, child: const Text("Scan Again")),
+          TextButton(
+            onPressed: startScan,
+            child: const Text("Scan Again"),
+          ),
         ],
       ),
     );
@@ -356,7 +452,10 @@ class RadarPainter extends CustomPainter {
   final double progress;
   final Color color;
 
-  RadarPainter({required this.progress, required this.color});
+  RadarPainter({
+    required this.progress,
+    required this.color,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {

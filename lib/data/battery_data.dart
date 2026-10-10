@@ -6,6 +6,7 @@ class BatteryData {
   final double power;
   final double temperature;
   final double range;
+  final double remainingCapacityAh;
   final int cycleCount;
   final bool isCharging;
   final bool isDischarging;
@@ -37,6 +38,7 @@ class BatteryData {
     required this.isDischarging,
     required this.isConnected,
     required this.cellVoltages,
+    this.remainingCapacityAh = 0.0,
     this.vendorId = 'Unknown',
     this.hardwareVersion = 'Unknown',
     this.softwareVersion = 'Unknown',
@@ -60,6 +62,7 @@ class BatteryData {
       power: 0,
       temperature: 0,
       range: 0,
+      remainingCapacityAh: 0.0,
       cycleCount: 0,
       isCharging: false,
       isDischarging: false,
@@ -77,12 +80,22 @@ class BatteryData {
   }
 
   // =========================================================
-  // ESTIMATED RANGE
-  // =========================================================
+  //   // ESTIMATED RANGE
+  //   // =========================================================
 
-  double get estimatedRange {
-    return soc * 0.75;
+  double getEfficiency() {
+    final now = DateTime.now();
+    final hour = now.hour;
+
+    // Define "Daylight" hours (e.g., 6 AM to 6 PM)
+    // You can adjust these based on your local sunset/sunrise times
+    if (hour >= 6 && hour < 18) {
+      return 0.75; // Daytime Efficiency
+    } else {
+      return 0.6; // Nighttime Efficiency (Headlights likely ON)
+    }
   }
+
 
   // =========================================================
   // COPY WITH
@@ -96,6 +109,7 @@ class BatteryData {
     double? power,
     double? temperature,
     double? range,
+    double? remainingCapacityAh,
     int? cycleCount,
     bool? isCharging,
     bool? isDischarging,
@@ -117,7 +131,8 @@ class BatteryData {
       soh: soh ?? this.soh,
       power: power ?? this.power,
       temperature: temperature ?? this.temperature,
-      range: range ?? ((soc ?? this.soc) * 0.75),
+      range: range ?? this.range,
+      remainingCapacityAh: remainingCapacityAh ?? this.remainingCapacityAh,
       cycleCount: cycleCount ?? this.cycleCount,
       isCharging: isCharging ?? this.isCharging,
       isDischarging: isDischarging ?? this.isDischarging,

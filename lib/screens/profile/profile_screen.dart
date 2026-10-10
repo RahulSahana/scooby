@@ -1,10 +1,16 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter/services.dart';
 
 import '../../providers/battery_provider.dart';
-import '../../core/utils/jk_code_generator.dart';
+import '../../providers/theme_provider.dart';
+import '../../theme/app_colors.dart';
+import '../../widgets/battery_alert_settings.dart';
+import '../../widgets/notification.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -14,19 +20,31 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  late TextEditingController _passwordController;
+  late final TextEditingController _passwordController;
 
-  String _userName = "Rahul Sahana";
-  String _userDesc = "West Bengal • App Developer";
-  String _userAvatar = "🤖";
+  String _userName = 'Rahul Sahana';
+  String _userDesc = 'West Bengal • App Developer';
+  String _userAvatar = '🤖';
+  String _appVersion = 'Loading...';
 
-  final List<String> _avatarOptions = ["🤖", "👽", "🦊", "🐶", "🚀", "⚡", "👾", "🏍️"];
+  final List<String> _avatarOptions = [
+    '🤖',
+    '👽',
+    '🦊',
+    '🐶',
+    '🚀',
+    '⚡',
+    '👾',
+    '🏍️',
+  ];
 
   @override
   void initState() {
     super.initState();
-    final currentPassword = context.read<BatteryProvider>().bmsPassword;
-    _passwordController = TextEditingController(text: currentPassword);
+
+    final password = context.read<BatteryProvider>().bmsPassword;
+    _passwordController = TextEditingController(text: password);
+
     _loadProfileData();
   }
 
@@ -38,18 +56,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _loadProfileData() async {
     final prefs = await SharedPreferences.getInstance();
+    final packageInfo = await PackageInfo.fromPlatform();
+
+    if (!mounted) return;
+
     setState(() {
-      _userName = prefs.getString('profile_name') ?? "Rahul Sahana";
-      _userDesc = prefs.getString('profile_desc') ?? "West Bengal • EV Developer";
-      _userAvatar = prefs.getString('profile_avatar') ?? "🤖";
+      _userName = prefs.getString('profile_name') ?? 'Rahul Sahana';
+      _userDesc =
+          prefs.getString('profile_desc') ?? 'West Bengal • EV Developer';
+      _userAvatar = prefs.getString('profile_avatar') ?? '🤖';
+      _appVersion = 'v${packageInfo.version}';
     });
   }
 
-  Future<void> _saveProfileData(String name, String desc, String avatar) async {
+  Future<void> _saveProfileData(
+      String name,
+      String desc,
+      String avatar,
+      ) async {
     final prefs = await SharedPreferences.getInstance();
+
     await prefs.setString('profile_name', name);
     await prefs.setString('profile_desc', desc);
     await prefs.setString('profile_avatar', avatar);
+
+    if (!mounted) return;
 
     setState(() {
       _userName = name;
@@ -58,45 +89,70 @@ class _ProfileScreenState extends State<ProfileScreen> {
     });
   }
 
-  void _showEditProfileDialog() {
+  String _formatFirstOnDate(String date) {
+    if (date.length != 6) return date;
+
+    final year = 2000 + int.parse(date.substring(0, 2));
+    final month = date.substring(2, 4);
+    final day = date.substring(4, 6);
+
+    return '$day/$month/$year';
+  }
+
+  Future<void> _showEditProfileDialog() async {
     final nameController = TextEditingController(text: _userName);
     final descController = TextEditingController(text: _userDesc);
     String selectedAvatar = _userAvatar;
 
-    showDialog(
+    await showDialog<void>(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return StatefulBuilder(
-          builder: (context, setDialogState) {
+          builder: (dialogContext, setDialogState) {
+            final primary = Theme.of(dialogContext).colorScheme.primary;
+
             return AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-              backgroundColor: Colors.white,
-              title: const Text('Edit Profile', style: TextStyle(fontWeight: FontWeight.bold)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(24),
+              ),
+              title: const Text('Edit Profile'),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Choose an Avatar', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey)),
+                    const Text('Choose an Avatar'),
                     const SizedBox(height: 12),
                     Wrap(
                       spacing: 12,
                       runSpacing: 12,
                       children: _avatarOptions.map((avatar) {
                         final isSelected = avatar == selectedAvatar;
+
                         return GestureDetector(
-                          onTap: () => setDialogState(() => selectedAvatar = avatar),
+                          onTap: () {
+                            setDialogState(() {
+                              selectedAvatar = avatar;
+                            });
+                          },
                           child: Container(
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
-                              color: isSelected ? const Color(0xFF8B5CF6).withValues(alpha: 0.2) : Colors.grey.withValues(alpha: 0.1),
+                              color: isSelected
+                                  ? primary.withValues(alpha: 0.15)
+                                  : Colors.grey.withValues(alpha: 0.1),
                               border: Border.all(
-                                color: isSelected ? const Color(0xFF8B5CF6) : Colors.transparent,
+                                color: isSelected
+                                    ? primary
+                                    : Colors.transparent,
                                 width: 2,
                               ),
                               shape: BoxShape.circle,
                             ),
-                            child: Text(avatar, style: const TextStyle(fontSize: 28)),
+                            child: Text(
+                              avatar,
+                              style: const TextStyle(fontSize: 28),
+                            ),
                           ),
                         );
                       }).toList(),
@@ -107,8 +163,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       decoration: InputDecoration(
                         labelText: 'Name',
                         filled: true,
-                        fillColor: Colors.grey[100],
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -117,8 +175,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       decoration: InputDecoration(
                         labelText: 'Tagline',
                         filled: true,
-                        fillColor: Colors.grey[100],
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
                       ),
                     ),
                   ],
@@ -126,18 +186,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               actions: [
                 TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Cancel'),
                 ),
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF8B5CF6),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    backgroundColor: primary,
+                    foregroundColor:
+                    Theme.of(dialogContext).colorScheme.onPrimary,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
-                  onPressed: () {
-                    _saveProfileData(nameController.text, descController.text, selectedAvatar);
-                    Navigator.pop(context);
+                  onPressed: () async {
+                    await _saveProfileData(
+                      nameController.text.trim(),
+                      descController.text.trim(),
+                      selectedAvatar,
+                    );
+
+                    if (dialogContext.mounted) {
+                      Navigator.pop(dialogContext);
+                    }
                   },
                   child: const Text('Save'),
                 ),
@@ -147,124 +217,211 @@ class _ProfileScreenState extends State<ProfileScreen> {
         );
       },
     );
+
+    nameController.dispose();
+    descController.dispose();
   }
 
-  void _showSwitchScooterModal(BuildContext context, BatteryProvider provider) {
+  Future<void> _showSwitchScooterModal(
+      BuildContext context,
+      BatteryProvider provider,
+      ) async {
     provider.bleService.disconnect();
     provider.bleService.startScan();
 
-    showModalBottomSheet(
+    Timer? refreshTimer;
+
+    await showModalBottomSheet<void>(
       context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (context) {
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) {
         return StatefulBuilder(
-          builder: (context, setModalState) {
-            Future.delayed(const Duration(seconds: 1), () {
-              if (mounted) setModalState(() {});
-            });
+          builder: (sheetContext, setModalState) {
+            refreshTimer ??= Timer.periodic(
+              const Duration(seconds: 1),
+                  (_) {
+                if (sheetContext.mounted) {
+                  setModalState(() {});
+                }
+              },
+            );
 
             final devices = provider.bleService.devices;
 
-            return Padding(
-              padding: const EdgeInsets.all(24.0),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text("Nearby Scooters", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 8),
-                  Text(
-                    devices.isEmpty ? "Scanning Space..." : "Select secondary vehicle to override connection.",
-                    style: TextStyle(color: Colors.grey[600]),
-                  ),
-                  const SizedBox(height: 16),
-                  if (devices.isEmpty)
-                    const Center(
-                      child: Padding(
-                        padding: EdgeInsets.all(32.0),
-                        child: CircularProgressIndicator(color: Color(0xFF8B5CF6)),
-                      ),
-                    )
-                  else
-                    ListView.builder(
-                      shrinkWrap: true,
-                      itemCount: devices.length,
-                      itemBuilder: (context, index) {
-                        final device = devices[index];
-                        final name = device.platformName.isEmpty ? "Unknown Scooty" : device.platformName;
-
-                        return ListTile(
-                          leading: const CircleAvatar(
-                            backgroundColor: Color(0xFFE2D4F8),
-                            child: Icon(Icons.electric_bike, color: Color(0xFF8B5CF6), size: 20),
-                          ),
-                          title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                          subtitle: Text(device.remoteId.str, style: const TextStyle(fontSize: 12)),
-                          onTap: () {
-                            Navigator.pop(context);
-                            provider.bleService.stopScan();
-                            provider.bleService.connect(device);
-                          },
-                        );
-                      },
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Nearby Scooters',
+                      style: Theme.of(sheetContext).textTheme.titleLarge,
                     ),
-                ],
+                    const SizedBox(height: 8),
+                    Text(
+                      devices.isEmpty
+                          ? 'Scanning for scooters...'
+                          : 'Select a scooter to connect.',
+                    ),
+                    const SizedBox(height: 16),
+                    if (devices.isEmpty)
+                      const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(32),
+                          child: CircularProgressIndicator(),
+                        ),
+                      )
+                    else
+                      ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: devices.length,
+                        itemBuilder: (context, index) {
+                          final device = devices[index];
+                          final name = device.platformName.isEmpty
+                              ? 'Unknown Scooter'
+                              : device.platformName;
+
+                          return ListTile(
+                            leading: CircleAvatar(
+                              child: Icon(
+                                Icons.electric_bike,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                            ),
+                            title: Text(name),
+                            subtitle: Text(device.remoteId.str),
+                            onTap: () {
+                              Navigator.pop(context);
+                              provider.bleService.stopScan();
+                              provider.bleService.connect(device);
+                            },
+                          );
+                        },
+                      ),
+                  ],
+                ),
               ),
             );
           },
         );
       },
-    ).whenComplete(() => provider.bleService.stopScan());
+    );
+
+    refreshTimer?.cancel();
+    provider.bleService.stopScan();
   }
 
-  // ==========================================
-  // HARDWARE ROW HELPER WIDGET
-  // ==========================================
-  Widget _buildHardwareRow(BuildContext context, String label, String value, {bool isHighlight = false, bool isCopyable = false}) {
+  Widget _sectionLabel(String title, AppColors colors) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Text(
+        title.toUpperCase(),
+        style: TextStyle(
+          color: colors.secondaryText,
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+          letterSpacing: 1.3,
+        ),
+      ),
+    );
+  }
+
+  Widget _panel({
+    required AppColors colors,
+    required Widget child,
+    EdgeInsetsGeometry padding = const EdgeInsets.all(20),
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: padding,
+      decoration: BoxDecoration(
+        color: colors.cardColor,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: colors.cardBorder),
+      ),
+      child: child,
+    );
+  }
+
+  Widget _buildHardwareRow(
+      BuildContext context,
+      AppColors colors,
+      String label,
+      String value, {
+        bool isHighlight = false,
+        bool isCopyable = false,
+      }) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(label, style: const TextStyle(color: Colors.white70, fontSize: 14)),
-
-        // Wrap the value in a Row so we can put an icon next to it
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-                value,
-                style: TextStyle(
-                    color: isHighlight ? Colors.greenAccent : Colors.white,
-                    fontSize: 14,
-                    fontWeight: isHighlight ? FontWeight.bold : FontWeight.normal
-                )
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(
+              color: colors.primaryText.withValues(alpha: 0.7),
+              fontSize: 14,
             ),
+          ),
+        ),
+        Flexible(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: Text(
+                  value,
+                  textAlign: TextAlign.end,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: isHighlight
+                        ? colors.primary
+                        : colors.primaryText,
+                    fontSize: 14,
+                    fontWeight:
+                    isHighlight ? FontWeight.bold : FontWeight.normal,
+                  ),
+                ),
+              ),
+              if (isCopyable) ...[
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(
+                    minWidth: 32,
+                    minHeight: 32,
+                  ),
+                  iconSize: 16,
+                  tooltip: 'Copy $label',
+                  icon: Icon(
+                    Icons.copy,
+                    size: 16,
+                    color: colors.primaryText.withValues(alpha: 0.6),
+                  ),
+                  onPressed: () async {
+                    await Clipboard.setData(
+                      ClipboardData(text: value),
+                    );
 
-            // If isCopyable is true, show the copy icon
-            if (isCopyable) ...[
-              const SizedBox(width: 8),
-              GestureDetector(
-                onTap: () async {
-                  // 1. Copy to phone clipboard
-                  await Clipboard.setData(ClipboardData(text: value));
+                    if (!context.mounted) return;
 
-                  // 2. Show a sleek confirmation popup
-                  if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content: Text('$label copied to clipboard!'),
-                        duration: const Duration(seconds: 2),
+                        content: Text('$label copied to clipboard'),
                         behavior: SnackBarBehavior.floating,
-                        backgroundColor: const Color(0xFF8B5CF6), // Your premium purple
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        backgroundColor:
+                        Theme.of(context).colorScheme.primary,
                       ),
                     );
-                  }
-                },
-                child: const Icon(Icons.copy, size: 16, color: Colors.white54),
-              ),
-            ]
-          ],
+                  },
+                ),
+              ],
+            ],
+          ),
         ),
       ],
     );
@@ -273,289 +430,362 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final batteryProvider = context.watch<BatteryProvider>();
+    final themeProvider = context.watch<ThemeProvider>();
     final battery = batteryProvider.batteryData;
+    final colors = Theme.of(context).extension<AppColors>()!;
+    final scheme = Theme.of(context).colorScheme;
 
-    return Theme(
-      data: ThemeData(
-        brightness: Brightness.light,
-        scaffoldBackgroundColor: const Color(0xFFF9F9F9),
-        primaryColor: const Color(0xFF8B5CF6),
-      ),
-      child: Scaffold(
-        backgroundColor: const Color(0xFFF9F9F9),
-        body: SafeArea(
-          child: SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.all(24.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // ==========================================
-                  // DYNAMIC PROFILE HEADER
-                  // ==========================================
-                  Row(
+    return Scaffold(
+      backgroundColor: colors.background,
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.all(24),
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: scheme.primary.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Text(
+                    _userAvatar,
+                    style: const TextStyle(fontSize: 32),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // 1. Fixed Size Avatar
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: const BoxDecoration(color: Color(0xFFE2D4F8), shape: BoxShape.circle),
-                        child: Text(_userAvatar, style: const TextStyle(fontSize: 32)),
-                      ),
-
-                      const SizedBox(width: 16),
-
-                      // 2. Expanded Text Column (This stops the overflow!)
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              _userName,
-                              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.black87),
-                              // Allows long names/large fonts to wrap to a second line instead of pushing widgets
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              _userDesc,
-                              style: TextStyle(fontSize: 13, color: Colors.grey[600], fontWeight: FontWeight.w500),
-                              // Same protection for the description
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
+                      Text(
+                        _userName,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: colors.primaryText,
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-
-                      // 3. Fixed Size Edit Button
-                      IconButton(
-                        icon: const Icon(Icons.edit, color: Color(0xFF8B5CF6)),
-                        onPressed: _showEditProfileDialog,
+                      const SizedBox(height: 4),
+                      Text(
+                        _userDesc,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: colors.primaryText.withValues(alpha: 0.65),
+                          fontSize: 13,
+                        ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 40),
+                ),
+                IconButton(
+                  tooltip: 'Edit profile',
+                  icon: Icon(Icons.edit, color: scheme.primary),
+                  onPressed: _showEditProfileDialog,
+                ),
+              ],
+            ),
+            const SizedBox(height: 28),
+//==============================================================
+          /// APPEARANCE
+//==============================================================
+            _sectionLabel('Appearance', colors),
+            _panel(
+              colors: colors,
+              child: SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(
+                  themeProvider.isDarkMode ? 'Dark Mode' : 'Light Mode',
+                  style: TextStyle(
+                    color: colors.primaryText,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                subtitle: Text(
+                  'Switch between light and dark themes',
+                  style: TextStyle(color: colors.secondaryText),
+                ),
+                secondary: Icon(
+                  themeProvider.isDarkMode
+                      ? Icons.dark_mode
+                      : Icons.light_mode_rounded,
+                  color: scheme.primary,
+                ),
+                value: themeProvider.isDarkMode,
+                onChanged: (_) => themeProvider.toggleTheme(),
+              ),
+            ),
+            const SizedBox(height: 28),
+            _sectionLabel('Notifications', colors),
+//==============================================================
+            /// Notifications
+//==============================================================
+            const NotificationSettingsCard(),
+            const SizedBox(height: 28),
 
-                  // ==========================================
-                  // MY GARAGE DESIGNATED MANAGEMENT
-                  // ==========================================
-                  const Text('MY GARAGE', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.5, color: Colors.grey)),
-                  const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1E293B),
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [BoxShadow(color: Colors.grey.withValues(alpha: 0.08), blurRadius: 15, offset: const Offset(0, 5))],
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('Primary Scooter', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16, color: Colors.green)),
-                        const SizedBox(height: 8),
-                        Text('The app will prioritize auto-connecting to this address on launch.', style: TextStyle(color: Colors.grey[500], fontSize: 13)),
-                        const SizedBox(height: 16),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(12)),
-                          child: DropdownButtonHideUnderline(
-                            child: DropdownButton<String>(
-                              isExpanded: true,
-                              value: batteryProvider.primaryScooterId,
-                              hint: const Text("No Vehicles Saved"),
-                              icon: const Icon(Icons.electric_bike, color: Color(0xFF8B5CF6)),
-                              items: batteryProvider.savedGarage.map((scooter) {
-                                return DropdownMenuItem<String>(
-                                  value: scooter['id'],
-                                  child: Text(scooter['name']!, style: const TextStyle(fontWeight: FontWeight.w600)),
-                                );
-                              }).toList(),
-                              onChanged: (String? newId) {
-                                if (newId != null) batteryProvider.setPrimaryScooter(newId);
-                              },
-                            ),
-                          ),
-                        ),
-                      ],
+            _sectionLabel('My Garage', colors),
+            _panel(
+              colors: colors,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Primary Scooter',
+                    style: TextStyle(
+                      color: colors.primaryText,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 16,
                     ),
                   ),
-                  const SizedBox(height: 32),
-
-                  // ==========================================
-                  // BMS SECURITY CONFIGURATION
-                  // ==========================================
-                  const Text('BMS SECURITY', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.5, color: Colors.grey)),
-                  const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [BoxShadow(color: Colors.grey.withValues(alpha: 0.08), blurRadius: 15, offset: const Offset(0, 5))],
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('Device Password', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
-                        const SizedBox(height: 8),
-                        Text('Required to send hardware state command structures.', style: TextStyle(color: Colors.grey[500], fontSize: 13)),
-                        const SizedBox(height: 16),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: TextField(
-                                controller: _passwordController,
-                                decoration: InputDecoration(
-                                  hintText: 'e.g., 1234 or 802626052E',
-                                  filled: true,
-                                  fillColor: Colors.grey[100],
-                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            ElevatedButton(
-                              onPressed: () {
-                                batteryProvider.setBmsPassword(_passwordController.text);
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('Password updated!'), backgroundColor: Colors.green),
-                                );
-                              },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF8B5CF6),
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                              ),
-                              child: const Text('Save'),
-                            ),
-                          ],
-                        ),
-                      ],
+                  const SizedBox(height: 8),
+                  Text(
+                    'The app will prioritize connecting to this scooter.',
+                    style: TextStyle(color: colors.secondaryText),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      isExpanded: true,
+                      value: batteryProvider.primaryScooterId,
+                      dropdownColor: colors.cardColor,
+                      style: TextStyle(color: colors.primaryText),
+                      hint: const Text('No vehicles saved'),
+                      icon: Icon(Icons.electric_bike, color: scheme.primary),
+                      items: batteryProvider.savedGarage.map((scooter) {
+                        return DropdownMenuItem<String>(
+                          value: scooter['id'],
+                          child: Text(scooter['name'] ?? 'Scooter'),
+                        );
+                      }).toList(),
+                      onChanged: (newId) {
+                        if (newId != null) {
+                          batteryProvider.setPrimaryScooter(newId);
+                        }
+                      },
                     ),
                   ),
-                  const SizedBox(height: 32),
-
-                  // ==========================================
-                  // ABOUT BMS (Hardware Info)
-                  // ==========================================
-                  const Text('ABOUT BMS', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.5, color: Colors.grey)),
-                  const SizedBox(height: 16),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(24),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1E293B), // Premium dark card like the official app
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [BoxShadow(color: Colors.grey.withValues(alpha: 0.1), blurRadius: 15, offset: const Offset(0, 5))],
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        _buildHardwareRow(context, 'Vendor ID', battery.vendorId, isHighlight: true, isCopyable: true),
-                        const SizedBox(height: 12),
-                        _buildHardwareRow(context, 'Serial No.', battery.serialNumber, isCopyable: true),
-                        const SizedBox(height: 12),
-                        ElevatedButton(
-                          onPressed: () {
-                            // 1. Get the current time for the Update Code
-                            final now = DateTime.now();
-                            String updateCode = JkCodeGenerator.generateForceUpdateCode(now);
-
-                            // 2. Test your specific serial number
-                            // We pass the RAW serial before we formatted it, just like the website expects
-                            String myRawSerial = '26050550930AM62139829';
-                            String settingsPass = JkCodeGenerator.generateSettingsPassword(myRawSerial);
-
-                            // 3. Print the results to the debug console
-                            debugPrint('=== JK GENERATOR TEST ===');
-                            debugPrint('Website Update Code should be roughly: $updateCode');
-                            debugPrint('Website Settings Pass should be: $settingsPass');
-                            debugPrint('=========================');
-                          },
-                          child: const Text('Test Password Generator'),
-                        ),
-                        const SizedBox(height: 12),
-                        _buildHardwareRow(context, 'Hardware Ver.', battery.hardwareVersion),
-                        const SizedBox(height: 12),
-                        _buildHardwareRow(context, 'Software Ver.', battery.softwareVersion),
-                        const SizedBox(height: 12),
-                        _buildHardwareRow(context, 'First On Date', battery.firstOnDate),
-                        const SizedBox(height: 12),
-                        _buildHardwareRow(context, 'Total Uptime', battery.totalTime),
-                        const SizedBox(height: 24),
-                        const Text('WWW.JK-BMS.COM', style: TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold, letterSpacing: 1.2, fontSize: 12)),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 32),
-
-                  // ==========================================
-                  // HARDWARE OVERRIDES
-                  // ==========================================
-                  const Text('HARDWARE OVERRIDES', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.5, color: Colors.grey)),
-                  const SizedBox(height: 16),
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [BoxShadow(color: Colors.grey.withValues(alpha: 0.08), blurRadius: 15, offset: const Offset(0, 5))],
-                    ),
-                    child: Column(
-                      children: [
-                        ListTile(
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                          leading: Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(color: Colors.blue.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
-                            child: const Icon(Icons.electric_scooter, color: Colors.blue),
-                          ),
-                          title: const Text('Motor Power (Discharge)', style: TextStyle(fontWeight: FontWeight.w600)),
-                          subtitle: Text(battery.isDischarging ? 'Enabled' : 'Disabled (Immobilized)', style: TextStyle(color: battery.isDischarging ? Colors.green : Colors.red)),
-                          trailing: Switch(
-                            value: battery.isDischarging,
-                            activeThumbColor: Colors.blue,
-                            onChanged: (val) => batteryProvider.toggleDischarging(val),
-                          ),
-                        ),
-                        const Divider(height: 1, indent: 20, endIndent: 20),
-                        ListTile(
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                          leading: Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(color: Colors.green.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
-                            child: const Icon(Icons.power, color: Colors.green),
-                          ),
-                          title: const Text('Charge Input', style: TextStyle(fontWeight: FontWeight.w600)),
-                          subtitle: Text(battery.isCharging ? 'Accepting Current' : 'Cutoff Active', style: TextStyle(color: battery.isCharging ? Colors.green : Colors.orange)),
-                          trailing: Switch(
-                            value: battery.isCharging,
-                            activeThumbColor: Colors.green,
-                            onChanged: (val) => batteryProvider.toggleCharging(val),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 40),
-
-                  // ==========================================
-                  // HOT SWAP TRIGGER
-                  // ==========================================
-                  Center(
-                    child: TextButton.icon(
-                      onPressed: () => _showSwitchScooterModal(context, batteryProvider),
-                      icon: const Icon(Icons.swap_horiz, color: Color(0xFF8B5CF6)),
-                      label: const Text('Switch Scooter', style: TextStyle(color: Color(0xFF8B5CF6), fontSize: 16, fontWeight: FontWeight.bold)),
-                    ),
-                  ),
-                  const SizedBox(height: 40),
                 ],
               ),
             ),
-          ),
+            const SizedBox(height: 28),
+//***************************************************
+            ///          BMS SECURITY
+//***************************************************
+            _sectionLabel('BMS Security', colors),
+            _panel(
+              colors: colors,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Device Password',
+                    style: TextStyle(
+                      color: colors.primaryText,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 16,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Used when sending hardware commands.',
+                    style: TextStyle(color: colors.secondaryText),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _passwordController,
+                          style: TextStyle(color: colors.primaryText),
+                          decoration: InputDecoration(
+                            hintText: 'Enter BMS password',
+                            filled: true,
+                            fillColor: colors.background,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide.none,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: scheme.primary,
+                          foregroundColor: scheme.onPrimary,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 14,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        onPressed: () {
+                          batteryProvider.setBmsPassword(
+                            _passwordController.text,
+                          );
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Password updated'),
+                            ),
+                          );
+                        },
+                        child: const Text('Save'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 28),
+//***************************************************
+            ///          ABOUT BMS
+//***************************************************
+            _sectionLabel('About BMS', colors),
+            _panel(
+              padding: const EdgeInsets.all(20),
+              colors: colors,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  _buildHardwareRow(
+                    context,
+                    colors,
+                    'Vendor ID',
+                    battery.vendorId,
+                    isHighlight: true,
+                    isCopyable: true,
+                  ),
+                  //const SizedBox(height: 12),
+                  _buildHardwareRow(
+                    context,
+                    colors,
+                    'Serial No.',
+                    battery.serialNumber,
+                    isCopyable: true,
+                  ),
+                  //const SizedBox(height: 12),
+                  _buildHardwareRow(
+                    context,
+                    colors,
+                    'Hardware Ver.',
+                    battery.hardwareVersion,
+                  ),
+                  const SizedBox(height: 12),
+                  _buildHardwareRow(
+                    context,
+                    colors,
+                    'App Version',
+                    _appVersion,
+                  ),
+                  const SizedBox(height: 12),
+                  _buildHardwareRow(
+                    context,
+                    colors,
+                    'First On Date',
+                    _formatFirstOnDate(battery.firstOnDate),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildHardwareRow(
+                    context,
+                    colors,
+                    'Total Uptime',
+                    battery.totalTime,
+                  ),
+                  const SizedBox(height: 22),
+                  Text(
+                    'WWW.JK-BMS.COM',
+                    style: TextStyle(
+                      color: scheme.primary,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1.2,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 28),
+
+            _sectionLabel('Hardware Overrides', colors),
+            _panel(
+              colors: colors,
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Column(
+                children: [
+                  SwitchListTile(
+                    secondary: Icon(
+                      Icons.electric_scooter,
+                      color: scheme.primary,
+                    ),
+                    title: Text(
+                      'Motor Power (Discharge)',
+                      style: TextStyle(color: colors.primaryText),
+                    ),
+                    subtitle: Text(
+                      battery.isDischarging
+                          ? 'Enabled'
+                          : 'Disabled (Immobilized)',
+                      style: TextStyle(
+                        color: battery.isDischarging
+                            ? scheme.primary
+                            : colors.secondaryText,
+                      ),
+                    ),
+                    value: battery.isDischarging,
+                    onChanged: batteryProvider.toggleDischarging,
+                  ),
+                  const Divider(height: 1, indent: 20, endIndent: 20),
+                  SwitchListTile(
+                    secondary: Icon(
+                      Icons.power,
+                      color: scheme.primary,
+                    ),
+                    title: Text(
+                      'Charge Input',
+                      style: TextStyle(color: colors.primaryText),
+                    ),
+                    subtitle: Text(
+                      battery.isCharging
+                          ? 'Accepting current'
+                          : 'Cutoff active',
+                      style: TextStyle(
+                        color: battery.isCharging
+                            ? scheme.primary
+                            : colors.secondaryText,
+                      ),
+                    ),
+                    value: battery.isCharging,
+                    onChanged: batteryProvider.toggleCharging,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 28),
+
+            Center(
+              child: TextButton.icon(
+                onPressed: () {
+                  _showSwitchScooterModal(context, batteryProvider);
+                },
+                icon: Icon(Icons.swap_horiz, color: scheme.primary),
+                label: Text(
+                  'Switch Scooter',
+                  style: TextStyle(
+                    color: scheme.primary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+          ],
         ),
       ),
     );

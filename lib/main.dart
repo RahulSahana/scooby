@@ -1,28 +1,34 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:scooby/providers/navigation_provider.dart';
 import 'package:scooby/screens/connect/connect_screen.dart';
+import 'package:scooby/services/notification_service.dart';
 
 import 'providers/battery_provider.dart';
+import 'providers/theme_provider.dart';
+import 'theme/app_colors.dart';
 
 import 'screens/home/home_screen.dart';
-import 'screens/charge/charge_screen.dart';
 import 'screens/profile/profile_screen.dart';
 import 'widgets/connection_badge.dart';
+import 'screens/navigate/navigate_screen.dart';
+
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await NotificationService.instance.initialize();
 
   // IMMERSIVE PREMIUM UI CONFIGURATION
-  SystemChrome.setSystemUIOverlayStyle(
-    const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent, // Makes the bar itself transparent
-      statusBarIconBrightness: Brightness.dark, // Dark icons for Android (clock, wifi, battery)
-      statusBarBrightness: Brightness.light, // Dark icons for iOS
-      systemNavigationBarColor: Colors.transparent, // Optional: applies to the bottom nav bar too
-      systemNavigationBarIconBrightness: Brightness.dark,
-    ),
-  );
+  // SystemChrome.setSystemUIOverlayStyle(
+  //   const SystemUiOverlayStyle(
+  //     statusBarColor: Colors.transparent, // Makes the bar itself transparent
+  //     statusBarIconBrightness: Brightness.dark, // Dark icons for Android (clock, wifi, battery)
+  //     statusBarBrightness: Brightness.light, // Dark icons for iOS
+  //     systemNavigationBarColor: Colors.transparent, // Optional: applies to the bottom nav bar too
+  //     systemNavigationBarIconBrightness: Brightness.dark,
+  //   ),
+  // );
 
   SystemChrome.setEnabledSystemUIMode(
     SystemUiMode.edgeToEdge,
@@ -32,9 +38,35 @@ void main() async {
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => BatteryProvider()),
+        ChangeNotifierProvider(create: (_) => ThemeProvider()),
+        ChangeNotifierProvider(
+          create: (_) => NavigationProvider(),
+        ),
       ],
       child: const Scooby(),
     ),
+  );
+}
+
+ThemeData _buildTheme(AppColors colors, Brightness brightness) {
+  final colorScheme = ColorScheme.fromSeed(
+    seedColor: colors.primary,
+    brightness: brightness,
+  ).copyWith(
+    primary: colors.primary,
+    secondary: colors.secondary,
+    error: colors.criticalRed,
+    surface: colors.cardColor,
+    onSurface: colors.primaryText,
+    outline: colors.cardBorder,
+  );
+
+  return ThemeData(
+    brightness: brightness,
+    scaffoldBackgroundColor: colors.background,
+    colorScheme: colorScheme,
+    useMaterial3: true,
+    extensions: <ThemeExtension<dynamic>>[colors],
   );
 }
 
@@ -43,22 +75,22 @@ class Scooby extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = context.watch<ThemeProvider>();
     return MaterialApp(
       title: 'Scooby',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.deepPurple,
-        ),
-        useMaterial3: true,
-      ),
+      theme: _buildTheme(AppColors.light, Brightness.light),
+      darkTheme: _buildTheme(AppColors.dark, Brightness.dark),
+      themeMode: themeProvider.themeMode,
       home: const AnnotatedRegion<SystemUiOverlayStyle>(
         value: SystemUiOverlayStyle(
           statusBarIconBrightness: Brightness.dark,
           statusBarBrightness: Brightness.light,
         ),
-        child: ConnectScreen(),
+        //child: ConnectScreen(),
+        //child: NavigateScreen(),
         //child: HomeScreen(),
+        child: ProfileScreen(),
       ),
     );
   }
@@ -77,7 +109,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
   final List<Widget> _screens = [
     const HomeScreen(),
-    const ChargeScreen(),
+    const NavigateScreen(),
     const ProfileScreen(),
   ];
 
@@ -96,8 +128,8 @@ class _MyHomePageState extends State<MyHomePage> {
   void _onItemTapped(int index) {
     _pageController.animateToPage(
       index,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeInOut,
+      duration: const Duration(milliseconds: 100),
+      curve: Curves.bounceOut,
     );
   }
 
@@ -124,12 +156,24 @@ class _MyHomePageState extends State<MyHomePage> {
           backgroundColor: Colors.transparent,
           elevation: 0,
           systemOverlayStyle: SystemUiOverlayStyle.dark,
+          titleSpacing: 16,
           title: const Text(
-            "Scooby",
+            'Scooby',
             style: TextStyle(
               fontSize: 30,
               fontWeight: FontWeight.bold,
-              color: Colors.deepPurple,
+              color: Colors.teal,
+            ),
+          ),
+          flexibleSpace: IgnorePointer(
+            child: SafeArea(
+              child: Center(
+                child: Image.asset(
+                  'lib/assets/eyes.png',
+                  width: 60,
+                  fit: BoxFit.fitHeight,
+                ),
+              ),
             ),
           ),
           actions: const [
@@ -147,16 +191,16 @@ class _MyHomePageState extends State<MyHomePage> {
         ),
         bottomNavigationBar: BottomNavigationBar(
           currentIndex: _selectedIndex,
-          selectedItemColor: Colors.deepPurple,
+          selectedItemColor: Colors.teal,
           onTap: _onItemTapped,
           items: const <BottomNavigationBarItem>[
             BottomNavigationBarItem(
               icon: Icon(Icons.electric_bike_outlined),
-              label: 'Home',
+              label: 'Dashboard',
             ),
             BottomNavigationBarItem(
-              icon: Icon(Icons.electric_bolt_outlined),
-              label: 'Charge',
+              icon: Icon(Icons.location_on_outlined),
+              label: 'Navigate',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.person),

@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-import '../models/battery_data.dart';
+import '../data/battery_data.dart';
 
 /// Parser for JK BMS BLE protocol (JK02_32S Cell Info Frame)
 ///
@@ -417,18 +417,19 @@ class JkBmsParser {
   static BatteryData parseBatteryData(List<int> frame) {
     final soc = parseSoc(frame);
     return BatteryData(
-      voltage:      parseVoltage(frame),
-      current:      parseCurrent(frame),
-      soc:          soc,
-      power:        parsePower(frame),
-      temperature:  parseTemperature(frame),
-      range:        soc * _kmPerSocPercent,
-      cycleCount:   parseCycleCount(frame),
-      soh:          parseSoh(frame),
-      isCharging:   parseIsCharging(frame),
-      isDischarging: parseDischargeMosfet(frame),
-      isConnected:  true,
-      cellVoltages: parseCellVoltages(frame),
+      voltage:              parseVoltage(frame),
+      current:              parseCurrent(frame),
+      soc:                  soc,
+      power:                parsePower(frame),
+      temperature:          parseTemperature(frame),
+      range:                soc * _kmPerSocPercent,
+      remainingCapacityAh: parseRemainingCapacity(frame),
+      cycleCount:           parseCycleCount(frame),
+      soh:                  parseSoh(frame),
+      isCharging:           parseIsCharging(frame),
+      isDischarging:        parseDischargeMosfet(frame),
+      isConnected:          true,
+      cellVoltages:         parseCellVoltages(frame),
     );
   }
 

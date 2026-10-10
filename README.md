@@ -1,337 +1,228 @@
-# scooby
+# Scooby — Professional EV Dashboard for JK BMS
 
-A Flutter project for my EV Scooty.
+**Scooby** is a high-performance Flutter application designed to interface directly with electric vehicle drivetrains via Bluetooth Low Energy (BLE). It provides a premium, real-time dashboard for vehicles equipped with **JK Battery Management Systems (BMS)**, combining deep telemetry insights with hardware-level security controls.
 
-## Getting Started
+> **Note on structure:** This document is an excerpted set of sections from a larger internal reference (hence the non-sequential Part numbers — e.g. Part 5 is followed by Part 8). Numbering has been left as-is to match the source; missing parts were not included in this excerpt.
 
-This project is a starting point for a Flutter application.
+---
 
-A few resources to get you started if this is your first Flutter project:
+# PART 1 — PROJECT OVERVIEW
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+## 2-Minute Interview Answer
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+> "Scooby is a specialized Flutter application designed to interface directly with electric vehicle drivetrains via Bluetooth Low Energy (BLE). It specifically targets vehicles using JK Battery Management Systems (BMS).
+>
+> The project solves the critical problem of 'telemetry transparency' — most budget or DIY EV conversions lack a sophisticated dashboard. Scooby provides real-time monitoring of voltage, current, and cell-level health, while also acting as a security tool with a remote 'Motor Kill Switch' and Charge Cutoff.
+>
+> Technologically, I built a custom binary protocol parser to handle the JK BMS frame structure (`0x55 0xAA 0xEB 0x90` header). I used Provider for state management and FlutterBluePlus for the BLE stack. One of the highlights is a robust Stateful Auto-Reconnection Loop and a Software Safety Interlock that prevents hazardous hardware commands from executing while the vehicle is in motion. It's an example of how high-level cross-platform UI can securely manage low-level hardware."
 
+---
 
+## 5-Minute Detailed Answer
 
-# BMS Documentation
+The project serves EV enthusiasts and micro-mobility owners who need a reliable dashboard.
 
-# JK BMS BLE Protocol Documentation
+### Main Features
 
-## BLE Service & Characteristic
+1. **Live Telemetry:** Real-time stream of pack voltage, current (A), and power (W).
+2. **Cell Diagnostics:** Visualizing individual cell voltages (up to 24–32S) to detect imbalances before they lead to battery failure.
+3. **Hardware Overrides:** Toggleable MOSFETs for charging and discharging.
+4. **Intelligent Safety:** The 'Interlock' system monitors discharge current; if the motor is pulling power, the UI physically locks the 'Motor Power' and 'Charge' switches to prevent MOSFET arcing or sudden propulsion loss.
+5. **Garage Management:** Remembers the MAC addresses of multiple scooters for instant auto-connecting on launch.
 
-The BMS is accessible via the following BLE service:
+### Major Technical Components
+
+- **Protocol Layer:** A manual binary parser using `ByteData` to decode little-endian integers and ASCII strings from raw BLE notify chunks.
+- **Command Pipeline:** A serialized write pipeline that handles the mandatory 10-digit authentication handshake (`802626052E`) before executing register writes.
+- **UI System:** A unified design system using Theme Extensions for Light/Dark mode and `FittedBox` text scaling to handle high-accessibility font settings without layout breakage.
+
+### Why This Tech?
+
+- **Flutter:** Chosen for its ability to create high-performance custom animations (like the sine-wave battery fill) and consistent BLE performance on both Android and iOS.
+- **Provider:** For its simplicity in small-to-medium hardware-driven apps, allowing a clean bridge between the `BleService` and the UI.
+- **Shared Preferences:** Used for persistent storage of 'Garage' metadata and user preferences.
+
+### Architecture
+
+The app follows a Service-Based MVVM architecture. The `BatteryProvider` acts as the single source of truth (the ViewModel), delegating hardware complexity to the `BleService` and protocol complexity to the `JkBmsParser`.
+
+---
+
+# PART 2 — COMPLETE PROJECT STRUCTURE
+
+```
+Scooby/
+├── lib/
+│   ├── core/
+│   │   └── utils/
+│   │       └── jk_code_generator.dart    # Logic for generating time-based BMS codes
+│   ├── models/
+│   │   └── battery_data.dart             # Immutable Data Model for telemetry
+│   ├── parsers/
+│   │   └── jk_bms_parser.dart            # The "Brain": Binary protocol decoding
+│   ├── providers/
+│   │   ├── battery_provider.dart         # Central State & Logic bridge
+│   │   └── theme_provider.dart           # Theme state persistence
+│   ├── screens/
+│   │   ├── charge/                       # Wavy animation & ETA logic
+│   │   ├── connect/                      # Radar scanning & Auto-connect loop
+│   │   ├── home/                         # Motion GIF & Vital Stats
+│   │   └── profile/                      # Security, Garage & About BMS
+│   ├── services/
+│   │   ├── ble_service.dart              # Bluetooth lifecycle & frame routing
+│   │   └── jk_command_service.dart       # Frame builder & Secure Write pipeline
+│   ├── theme/
+│   │   └── app_colors.dart               # Theme Extensions (Semantic Tokens)
+│   ├── widgets/
+│   │   ├── battery_arc.dart              # Custom Gauge widget
+│   │   └── connection_badge.dart         # Stateful Interactive status button
+│   └── main.dart                         # App Entry, Theme & PageView Nav
+├── pubspec.yaml                          # Dependency management (FBP, Provider, etc.)
+└── android/                              # Android specific Manifest/Permissions
+```
+
+### Architecture Analysis
+
+- **Pattern:** MVVM (Model-View-ViewModel).
+- **Cleanliness:** The separation between the Parser (Domain), Service (Data), and Provider (ViewModel) is strong.
+- **Architectural Problem:** The `BleService` holds a reference to `BatteryProvider` (Constructor Injection). While functional, in a larger system, this should be inverted using a Repository Pattern or Streams/Event Bus to prevent a circular dependency feel.
+
+---
+
+# PART 3 — SYSTEM DESIGN
+
+## High-Level ASCII Diagram
+
+```
+┌──────────────┐         ┌──────────────┐
+│   UI LAYER   │◄────────┤  THEME EXT   │
+│  (Screens)   │         └──────────────┘
+└──────┬───────┘
+       ▼
+┌──────────────┐         ┌──────────────┐
+│  VIEW MODEL  │◄────────┤ LOCAL STORAGE│
+│  (Provider)  │         │ (SharedPrefs)│
+└──────┬───────┘         └──────────────┘
+       ▲ (Listen/Notify)
+       ▼
+┌──────────────┐         ┌──────────────┐
+│ BLE SERVICE  │◄───────►│  BMS PARSER  │
+│ (Stack/Link) │         │  (Protocol)  │
+└──────┬───────┘         └──────────────┘
+       ▼
+┌──────────────┐         ┌──────────────┐
+│  BLE STACK   │◄───────►│ PHYSICAL BMS │
+│(FBP Library) │         │  (Hardware)  │
+└──────────────┘         └──────────────┘
+```
+
+- **Data Flow:** Unidirectional telemetry updates (BMS → Parser → Provider → UI).
+- **Control Flow:** Command propagation (UI → Provider → Service → BMS).
+- **Lifecycle:** `BleService` lives for the app's entire duration; `ConnectScreen` manages the scanning lifecycle.
+- **State:** Centralized in `BatteryProvider`. Business logic (Interlocks) lives here and in `BleService`.
+
+---
+
+# PART 4 — END-TO-END FEATURE FLOWS
+
+## Feature: Toggling Motor Power (Discharge Kill Switch)
+
+1. **User Action:** User taps the 'Motor Power' switch on the Home/Profile screen.
+2. **UI:** Calls `batteryProvider.toggleDischarging(newValue)`.
+3. **ViewModel (Provider):**
+    - Performs Optimistic Update (UI reflects change instantly).
+    - Checks the Interlock: If current ≤ -0.6A, it aborts and notifies the user.
+    - If safe, calls `bleService.toggleDischargeMosfet()`.
+4. **Service (BLE):**
+    - Sets `isHardwareCommandPending = true` (pauses the telemetry radar).
+    - Calls `_commandService.sendAuthorization()` (BMS Password).
+    - Waits 500ms (BMS processing window).
+    - Calls `_commandService.setDischargeMosfet()`.
+5. **Command Service:** Builds a perfect 20-byte packet (Header + `0x02` + Reg `0x1E` + 12-byte padded value + CRC).
+6. **Hardware:** BMS authenticates, clicks the relay, and acknowledges.
+7. **Service (BLE):** Resumes telemetry polling; `isHardwareCommandPending = false`.
+8. **UI Update:** Next telemetry frame (Type `0x02`) confirms the hardware state, and the Switch reflects truth.
+
+---
+
+# PART 5 — COMPONENT RESPONSIBILITIES
+
+| Class | Responsibility | Depends On | Used By | Methods |
+| :--- | :--- | :--- | :--- | :--- |
+| `BatteryProvider` | State holder & UI Bridge | `BleService` | UI Screens | `updateTelemetry`, `toggleCharging` |
+| `BleService` | BLE lifecycle & Traffic Cop | `JkCommandService`, `JkBmsParser` | `BatteryProvider` | `connect`, `_startAutoReconnectLoop` |
+| `JkBmsParser` | Protocol Decoder | `BatteryData` | `BleService` | `parseBatteryData`, `parseDeviceInfo` |
+| `JkCommandService` | Protocol Encoder | None | `BleService` | `buildWriteCommand`, `calculateCrc` |
+| `BatteryData` | Immutable Data Model | None | Provider/Parser | `copyWith`, `empty` |
+
+---
+
+# PART 8 — BLUETOOTH / HARDWARE COMMUNICATION
+
+This is the core of the project.
+
+- **Service Discovery:** Targets Service `0xFFE0` and Characteristic `0xFFE1`.
+- **Buffering:** Uses a `packetBuffer` (`List<int>`) to accumulate BLE notify chunks.
+- **Frame Detection:** Implements a sliding window search for the header `0x55 0xAA 0xEB 0x90`.
+- **Endianness:** Strictly Little Endian for telemetry (voltage/current) and Big Endian for certain system time registers.
+- **Reconnection:** Uses a Stateful Auto-Reconnect Loop. If a `BluetoothConnectionState.disconnected` event triggers, it launches a 5-second periodic timer that attempts to re-establish the link until successful or manually overridden.
+
+### BMS Protocol Reference
+
 - Service UUID: `0xFFE0`
-- Write Characteristic UUID: `0xFFE1` (handle `0x03`) - Used to send commands
-- Notification Characteristic UUID: `0xFFE1` (handle `0x05`) - Used to receive notifications
+- Characteristic UUID: `0xFFE1`
+- Header: `0x55 0xAA 0xEB 0x90`
+- Command Structure: 20-byte frames (Header + Payload + CRC)
+- Frame Identification: `0x01` (Settings), `0x02` (Cell Info), `0x03` (Device Info)
 
-**Note:** While both characteristics share the same UUID (`0xFFE1`), they have different handles and purposes:
-- Commands are written to handle `0x03`
-- Notifications are received on handle `0x05`
+> **Fixed inconsistency:** the original doc gave two different byte orders for the frame header (`0x55 0xAA 0xEB 0x90` in Part 8 vs. `AA 55 90 EB` in the legacy reference section). These have been reconciled to a single value here. Please confirm against your actual firmware/capture logs which order is correct before relying on this for parsing.
 
-## Communication Flow
+---
 
-1. Establish BLE connection
-2. Register for notifications on characteristic `0xFFE1` (handle `0x05`)
-3. Send `0x96` on characteristic `0xFFE1` (handle `0x03`) → BMS responds with Frame 0x01 (settings)
-4. Send `0x97` on characteristic `0xFFE1` (handle `0x03`) → BMS responds with Frame 0x03 (device info)
-5. After both commands are acknowledged, BMS automatically streams Frame 0x02 (cell info) periodically
+# PART 10 — DESIGN PATTERNS
 
-## Command Structure
+1. **Observer Pattern:** Used by `ChangeNotifier` (Provider) to update the UI when hardware stats change.
+2. **Factory Pattern:** `BatteryData.empty()` and `BatteryData.demo()` for clean state initialization.
+3. **Strategy Pattern (Planned):** The `ConnectionMode` enum (BLE vs HTTP) allows the app to swap data sources based on vehicle capability.
+4. **Adapter/Wrapper:** `AppColors` extension acts as an adapter for the system `ThemeData`.
 
-Commands are sent as 20-byte frames with the following format:
+---
 
-| Offset | Length | Description |
-|-------:|-------:|-------------|
-|    0-3 |      4 | Header (0xAA 0x55 0x90 0xEB) |
-|      4 |      1 | Command byte |
-|      5 |      1 | Length byte |
-|   6-15 |     10 | Data (command-specific payload) |
-|     16 |      1 | Counter (sequence counter, wraps at 0xFF) |
-|  17-18 |      2 | Reserved (0x00 0x00) |
-|     19 |      1 | CRC |
+# PART 13 — SECURITY REVIEW
 
-### Command Types
+- **Vulnerability:** The BMS password (`802626052E`) is currently stored as a string in the provider.
+- **Recommendation:** Move sensitive hardware passwords into Flutter Secure Storage (Keychain/Keystore) rather than `shared_preferences`.
+- **Software Safety:** The Interlock System is a critical security layer that prevents "switching under load," which can weld MOSFETs shut.
 
-- `0x97`: Device info request → triggers Frame 0x03 (device info)
-- `0x96`: Settings request → triggers Frame 0x01 (settings); Frame 0x02 (cell data) auto-streams once both `0x96` and `0x97` have been sent
+---
 
-### Example Command Payloads
+# PART 18 — TECHNICAL DEBT
 
-#### Device Info Command (0x97)
-```
-AA 55 90 EB     # Header
-97              # Command
-00              # Length
-00 00 00 00     # Padding
-00 00 00 00     # Padding
-00 00           # Padding
-XX              # Counter (sequence)
-00 00           # Reserved
-00              # CRC (sum8 of bytes 0-18)
-```
+1. 🟡 **Offset Hardcoding (Medium):** Protocol parsing relies on magic numbers (e.g., `frame[11]`). Fix: use a Register Map class.
+2. 🟠 **Error Handling (High):** BLE write calls lack comprehensive retry-logic if the characteristic is busy.
+3. 🔴 **Testing (Critical):** Zero unit tests for the `JkBmsParser`. A single byte offset error could show 0V when the battery is full.
 
-#### Cell Info Command (0x96)
-```
-AA 55 90 EB     # Header
-96              # Command
-00              # Length
-00 00 00 00     # Padding
-00 00 00 00     # Padding
-00 00           # Padding
-XX              # Counter (sequence)
-00 00           # Reserved
-00              # CRC (sum8 of bytes 0-18)
-```
+---
 
-## Response Handling
+# PART 23 — FINAL CHEAT SHEET
 
-### Frame Assembly
-- Responses are at least 300 bytes; some devices send up to 320 bytes
-- Responses are fragmented due to BLE MTU limitations
-- Each response frame starts with sequence: `0x55 0xAA 0xEB 0x90`
-- When start sequence is detected, current frame buffer is cleared
-- Frame validation uses CRC (sum of all bytes except CRC byte)
-- All responses are received as notifications on characteristic `0xFFE1` (handle `0x05`)
+### Top 5 Technical Challenges Solved
 
-### Response Frame Types
-Response type is identified by byte[4]:
-- `0x01`: Settings frame
-- `0x02`: Cell info frame
-- `0x03`: Device info frame
+1. **Partial Frame Stitching:** Handling BLE chunks that arrive out of order or split across packets.
+2. **Multi-Stage Auth Write:** Sequencing Password → Delay → Command → Poll.
+3. **Accessibility Layout:** Using `FittedBox` to prevent UI breakage on senior-friendly font sizes.
+4. **Persistent Garage:** Multi-vehicle memory logic.
+5. **State Synchronization:** Ensuring the UI Switch matches the hardware state even after a disconnect.
 
-## CRC Calculation
+### Top 3 "Killer" Interview Questions
 
-The CRC is calculated by summing all bytes in the frame except the CRC byte itself:
+1. *"How did you handle the risk of cutting motor power while driving?"*
+   **Answer:** The 0.6A Software Interlock.
+2. *"Why do you pad your BLE packets to exactly 20 bytes?"*
+   **Answer:** Rigid JK BMS firmware requirements.
+3. *"How does your app handle background reconnection?"*
+   **Answer:** The Stateful Timer loop in `BleService`.
 
-```c
-uint8_t crc(const uint8_t data[], const uint16_t len) {
-  uint8_t crc = 0;
-  for (uint16_t i = 0; i < len; i++) {
-    crc = crc + data[i];
-  }
-  return crc;
-}
-```
+---
 
-## Error Handling
-
-- Maximum allowed frame size is 320 bytes
-- Frames exceeding this size are dropped
-- CRC validation is performed on assembled frames
-- Frames with invalid CRC are discarded
-
-## Frame Types
-
-### Cell Info Frame Specification (`JK02_32S`)
-
-| Position (Bytes) | Length | Description | Format | Coefficient | Unit | Notes |
-|-----------------:|-------:|-------------|--------|-------------|------|-------|
-|              0-3 |      4 | Header | Raw | - | - | Fixed value: 0x55 0xAA 0xEB 0x90 |
-|                4 |      1 | Record type | uint8 | - | - | Fixed value: 0x02 |
-|                5 |      1 | Frame counter | uint8 | - | - | - |
-|             6-69 |     64 | Cell voltages 1-32 | uint16 | 0.001 | V | 2 bytes per cell |
-|            70-73 |      4 | Enabled cells bitmask | Raw | - | - | 32-bit LE; bit0=cell1 … bit31=cell32 |
-|            74-75 |      2 | Average cell voltage | uint16 | 0.001 | V | Present in frame; ESPHome computes locally |
-|            76-77 |      2 | Delta cell voltage | uint16 | 0.001 | V | Present in frame; ESPHome computes locally |
-|               78 |      1 | Max voltage cell number | uint8 | 1 | - | Present in frame; ESPHome computes locally |
-|               79 |      1 | Min voltage cell number | uint8 | 1 | - | Present in frame; ESPHome computes locally |
-|           80-143 |     64 | Cell resistances 1-32 | uint16 | 0.001 | Ohm | 2 bytes per cell |
-|          144-145 |      2 | Power tube temperature | int16 | 0.1 | °C | - |
-|          146-149 |      4 | Wire resistance warning bitmask | Raw | - | - | 32-bit LE; bit0=cell1 … bit31=cell32 |
-|          150-153 |      4 | Battery voltage | uint32 | 0.001 | V | - |
-|          154-157 |      4 | Battery power | uint32 | 0.001 | W | Raw field; ESPHome computes signed power from voltage × current instead |
-|          158-161 |      4 | Charge current | int32 | 0.001 | A | - |
-|          162-163 |      2 | Temperature Sensor 1 | int16 | 0.1 | °C | - |
-|          164-165 |      2 | Temperature Sensor 2 | int16 | 0.1 | °C | - |
-|          166-169 |      4 | Errors bitmask | uint32 | - | - | Little-endian; see errors bitmask notes below |
-|          170-171 |      2 | Balance current | int16 | 0.001 | A | - |
-|              172 |      1 | Balancing action | Raw | - | - | 0=Off, 1=Charging balancer, 2=Discharging balancer |
-|              173 |      1 | State of charge | uint8 | 1 | % | - |
-|          174-177 |      4 | Remaining capacity | uint32 | 0.001 | Ah | - |
-|          178-181 |      4 | Nominal capacity | uint32 | 0.001 | Ah | - |
-|          182-185 |      4 | Cycle count | uint32 | 1 | - | - |
-|          186-189 |      4 | Total cycle capacity | uint32 | 0.001 | Ah | - |
-|              190 |      1 | State of Health (SOH) | uint8 | 1 | % | - |
-|              191 |      1 | Precharge status | Raw | - | - | 0=Off, 1=On |
-|          192-193 |      2 | User alarm | uint16 | - | - | Logged only |
-|          194-197 |      4 | Total runtime | uint32 | 1 | s | - |
-|              198 |      1 | Charging MOSFET status | Raw | - | - | 0=Off, 1=On |
-|              199 |      1 | Discharging MOSFET status | Raw | - | - | 0=Off, 1=On |
-|              200 |      1 | Precharging status | Raw | - | - | 0=Off, 1=On |
-|              201 |      1 | Balancing indicator | Raw | - | - | 0=Off, 1=On; logged only |
-|          202-203 |      2 | Discharge overcurrent protection release timer | uint16 | 1 | s | Logged only |
-|          204-205 |      2 | Discharge short circuit protection release timer | uint16 | 1 | s | Logged only |
-|          206-207 |      2 | Charge overcurrent protection release timer | uint16 | 1 | s | Logged only |
-|          208-209 |      2 | Charge short circuit protection release timer | uint16 | 1 | s | Logged only |
-|          210-211 |      2 | Undervoltage protection release timer | uint16 | 1 | s | Logged only |
-|          212-213 |      2 | Overvoltage protection release timer | uint16 | 1 | s | Logged only |
-|              214 |      1 | Temperature sensor absent bitmask | uint8 | - | - | Logged only; bit0=MOS, bit1-5=Sensors 1-5 |
-|              215 |      1 | Heating status | Raw | - | - | 0=Off, 1=On |
-|          216-217 |      2 | Reserved | - | - | - | - |
-|          218-219 |      2 | Emergency time countdown | uint16 | 1 | s | >0 = Emergency active |
-|          254-255 |      2 | Temperature Sensor 5 | int16 | 0.1 | °C | - |
-|          256-257 |      2 | Temperature Sensor 4 | int16 | 0.1 | °C | - |
-|          258-259 |      2 | Temperature Sensor 3 | int16 | 0.1 | °C | - |
-|          278-279 |      2 | Charge status time elapsed | uint16 | 1 | s | JK02_32S only |
-|              280 |      1 | Charge status ID | uint8 | - | - | JK02_32S only; 0=Bulk, 1=Absorption, 2=Float |
-|              281 |      1 | Dry contact switch status | Raw | - | - | JK02_32S only; see dry contact bitmask notes below |
-|              299 |      1 | CRC checksum | uint8 | - | - | - |
-
-Errors bitmask notes (little-endian):
-- JK02_32S: bytes 166–169, 32-bit
-- JK02_24S: bytes 136–137, 16-bit (bits 0–15 only; bits 16–31 are a JK02_32S extension)
-
-Both variants share the same bit layout. Published as a zero-padded hex string via `text_sensor.errors_bitmask_hex` (e.g. `0x00000000`).
-
-#### Errors bitmask bit layout
-
-| Bit | Label | Notes |
-|----:|-------|-------|
-|  0 | Wire resistance | |
-|  1 | MOSFET overtemperature | |
-|  2 | Cell count is not equal to settings | |
-|  3 | *(unused)* | |
-|  4 | Battery is fully charged | |
-|  5 | Battery pack overvoltage | |
-|  6 | Charge overcurrent | |
-|  7 | Charge short circuit | |
-|  8 | Charge overtemperature | |
-|  9 | Charge undertemperature | |
-| 10 | Coprocessor communication error | |
-| 11 | Cell undervoltage | |
-| 12 | Battery pack undervoltage | |
-| 13 | Discharge overcurrent | |
-| 14 | Discharge short circuit | |
-| 15 | Discharge overtemperature | |
-| 16 | Charging MOSFET abnormal | JK02_32S only |
-| 17 | Discharging MOSFET abnormal | JK02_32S only |
-| 18 | GPS disconnected | JK02_32S only |
-| 19 | Modify password in time | JK02_32S only |
-| 20 | Discharge on failed | JK02_32S only |
-| 21 | Battery overtemperature | JK02_32S only |
-| 22 | Temperature sensor anomaly | JK02_32S only |
-| 23 | PL module anomaly | JK02_32S only |
-| 24 | SCP release failed | JK02_32S only |
-| 25 | Discharge OCP II | JK02_32S only |
-| 26 | Discharge OCP III | JK02_32S only |
-| 27 | Discharge undertemperature alarm | JK02_32S only |
-| 28 | GPS remote lock | JK02_32S only |
-| 29 | *(unused)* | JK02_32S only |
-| 30 | *(unused)* | JK02_32S only |
-| 31 | *(unused)* | JK02_32S only |
-
-Dry contact bitmask notes for byte 281 (JK02_32S only):
-- bit1 (0x02): DRY1 active
-- bit2 (0x04): DRY2 active
-
-### Device Info Frame Specification (`JK02_32S`)
-
-| Position (Bytes) | Length | Description | Format | Coefficient | Unit | Notes |
-|-----------------:|-------:|-------------|--------|-------------|------|-------|
-|              0-3 |      4 | Frame header | hex | - | - | Fixed value: 0x55 0xAA 0xEB 0x90 |
-|                4 |      1 | Frame type | uint8 | - | - | Fixed value: 0x03 |
-|                5 |      1 | Frame counter | uint8 | - | - | Increments with each frame |
-|             6-21 |     16 | Vendor ID | string | - | - | Null-terminated string (16 bytes including null) |
-|            22-29 |      8 | Hardware version | string | - | - | Null-terminated string |
-|            30-37 |      8 | Software version | string | - | - | Null-terminated string |
-|            38-41 |      4 | Device uptime | uint32 | 1 | seconds | Little-endian |
-|            42-45 |      4 | Power on count | uint32 | 1 | count | Little-endian |
-|            46-61 |     16 | Device name | string | - | - | Null-terminated string |
-|            62-77 |     16 | Device passcode | string | - | - | Null-terminated string |
-|            78-85 |      8 | Manufacturing date | string | - | - | Null-terminated string |
-|           86-101 |     16 | Serial number | string | - | - | Null-terminated string |
-|          102-117 |     16 | User data | string | - | - | Null-terminated string |
-|          118-133 |     16 | Setup passcode | string | - | - | Null-terminated string |
-|              184 |      1 | UART1M Protocol number | uint8 | - | - | Protocol version |
-|              185 |      1 | CAN Protocol number | uint8 | - | - | Protocol version |
-|              218 |      1 | UART2M Protocol number | uint8 | - | - | Protocol version |
-|              219 |      1 | UART2M Protocol enable | uint8 | - | - | Enable flag |
-|              234 |      1 | LCD buzzer trigger | uint8 | - | - | Trigger setting |
-|              235 |      1 | DRY1 Trigger | uint8 | - | - | Trigger setting |
-|              236 |      1 | DRY2 Trigger | uint8 | - | - | Trigger setting |
-|              237 |      1 | UART protocol library version | uint8 | - | - | Protocol version |
-|          238-241 |      4 | LCD Buzzer Trigger Value | uint32 | - | - | Little-endian |
-|          242-245 |      4 | LCD Buzzer Release Value | uint32 | - | - | Little-endian |
-|          246-249 |      4 | DRY1 Trigger Value | uint32 | - | - | Little-endian |
-|          250-253 |      4 | DRY1 Release Value | uint32 | - | - | Little-endian |
-|          254-257 |      4 | DRY2 Trigger Value | uint32 | - | - | Little-endian |
-|          258-261 |      4 | DRY2 Release Value | uint32 | - | - | Little-endian |
-|          262-265 |      4 | Data Stored Period | uint32 | - | - | Little-endian |
-|              266 |      1 | RCV Time | uint8 | 0.1 | hours | Request Charge Voltage Time |
-|              267 |      1 | RFV Time | uint8 | 0.1 | hours | Request Float Voltage Time |
-|              268 |      1 | CAN protocol library version | uint8 | - | - | Protocol version |
-|              299 |      1 | CRC checksum | uint8 | - | - | - |
-
-### Settings Frame Specification (`JK02_32S`)
-
-| Position (Bytes) | Length | Description | Format | Coefficient | Unit | Notes |
-|-----------------:|-------:|-------------|--------|-------------|------|-------|
-|              0-3 |      4 | Header | hex | - | - | 0x55 0xAA 0xEB 0x90 |
-|                4 |      1 | Frame type | hex | - | - | 0x01 |
-|                5 |      1 | Frame counter | uint8 | - | - | - |
-|              6-9 |      4 | Smart sleep voltage | uint32 | 0.001 | V | - |
-|            10-13 |      4 | Cell UVP (undervoltage protection) | uint32 | 0.001 | V | - |
-|            14-17 |      4 | Cell UVPR (undervoltage protection recovery) | uint32 | 0.001 | V | - |
-|            18-21 |      4 | Cell OVP (overvoltage protection) | uint32 | 0.001 | V | - |
-|            22-25 |      4 | Cell OVPR (overvoltage protection recovery) | uint32 | 0.001 | V | - |
-|            26-29 |      4 | Balance trigger voltage | uint32 | 0.001 | V | - |
-|            30-33 |      4 | SOC 100% voltage | uint32 | 0.001 | V | - |
-|            34-37 |      4 | SOC 0% voltage | uint32 | 0.001 | V | - |
-|            38-41 |      4 | Cell request charge voltage (RCV) | uint32 | 0.001 | V | - |
-|            42-45 |      4 | Cell request float voltage (RFV) | uint32 | 0.001 | V | - |
-|            46-49 |      4 | Power off voltage | uint32 | 0.001 | V | - |
-|            50-53 |      4 | Max charge current | uint32 | 0.001 | A | - |
-|            54-57 |      4 | Charge OCP delay | uint32 | 1.0 | s | - |
-|            58-61 |      4 | Charge OCP recovery time | uint32 | 1.0 | s | - |
-|            62-65 |      4 | Max discharge current | uint32 | 0.001 | A | - |
-|            66-69 |      4 | Discharge OCP delay | uint32 | 1.0 | s | - |
-|            70-73 |      4 | Discharge OCP recovery time | uint32 | 1.0 | s | - |
-|            74-77 |      4 | Short circuit protection recovery time | uint32 | 1.0 | s | - |
-|            78-81 |      4 | Max balance current | uint32 | 0.001 | A | - |
-|            82-85 |      4 | Charge OTP | uint32 | 0.1 | °C | - |
-|            86-89 |      4 | Charge OTP recovery | uint32 | 0.1 | °C | - |
-|            90-93 |      4 | Discharge OTP | uint32 | 0.1 | °C | - |
-|            94-97 |      4 | Discharge OTP recovery | uint32 | 0.1 | °C | - |
-|           98-101 |      4 | Charge UTP | int32 | 0.1 | °C | - |
-|          102-105 |      4 | Charge UTP recovery | int32 | 0.1 | °C | - |
-|          106-109 |      4 | Power tube OTP | int32 | 0.1 | °C | - |
-|          110-113 |      4 | Power tube OTP recovery | int32 | 0.1 | °C | - |
-|          114-117 |      4 | Cell count | uint8 | 1.0 | - | Only first byte used |
-|          118-121 |      4 | Charge switch | bool | - | - | Only first byte used |
-|          122-125 |      4 | Discharge switch | bool | - | - | Only first byte used |
-|          126-129 |      4 | Balancer switch | bool | - | - | Only first byte used |
-|          130-133 |      4 | Nominal battery capacity | uint32 | 0.001 | Ah | - |
-|          134-137 |      4 | Short circuit protection delay | uint32 | 1.0 | μs | - |
-|          138-141 |      4 | Start balance voltage | uint32 | 0.001 | V | - |
-|          142-269 |    128 | Connection wire resistance (1-32) | uint32 | 0.001 | Ω | 32 x 4-byte values |
-|          270-273 |      4 | Device address | uint32 | - | - | Only first byte used |
-|          274-277 |      4 | Precharge time | uint32 | 1 | s | Only first byte used |
-|          278-281 |      4 | (Reserved) | - | - | - | - |
-|          282-283 |      2 | Controls bitmask | uint16 | - | - | See bitmask notes |
-|              284 |      1 | Heating start temperature | int8 | 1 | °C | - |
-|              285 |      1 | Heating stop temperature | int8 | 1 | °C | - |
-|              286 |      1 | Smart sleep | uint8 | - | h | - |
-|              287 |      1 | Data field enable control 0 | uint8 | - | - | - |
-|          288-295 |      8 | (Unknown) | - | - | - | - |
-|              296 |      1 | Discharge UTP | int8 | 1 | °C | Write register 0x3A |
-|              297 |      1 | Discharge UTP recovery | int8 | 1 | °C | Write register 0x3B |
-|              298 |      1 | (Unknown) | - | - | - | - |
-|              299 |      1 | CRC checksum | uint8 | - | - | - |
-
-Bitmask notes for bytes 282-283:
-- bit0: Heating enabled (1)
-- bit1: Disable temperature sensors (2)
-- bit2: GPS Heartbeat (4)
-- bit3: Port switch (1: RS485, 0: CAN) (8)
-- bit4: Display always on (16)
-- bit5: Special charger (32)
-- bit6: Smart sleep (64)
-- bit7: Disable PCL module (128)
-- bit8: Timed stored data (256)
-- bit9: Charging float mode (512)
-- bit10-15: Reserved
+Developed with ❤️ by **Rahul Sahana**

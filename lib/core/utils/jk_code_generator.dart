@@ -34,7 +34,7 @@ class JkCodeGenerator {
       }
 
       // 1. Strip the date from the front (we know your date is 6 chars: '260505')
-      String rawSerial = fullSerialNumber.substring(6); // '50930AM62139829'
+      // String rawSerial = fullSerialNumber.substring(6); // '50930AM62139829'
 
       // 2. The legacy JS usually extracts the last 4 to 6 digits to scramble
       // Because yours contains "AM6", doing math on this string will crash standard number parsers.

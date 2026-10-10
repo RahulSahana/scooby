@@ -1,12 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../services/ble_service.dart';
-import '../models/battery_data.dart';
+
+import '../data/battery_data.dart';
+import '../services/ble/ble_service.dart';
+import '../services/range_estimator.dart';
 
 class BatteryProvider extends ChangeNotifier {
   late BleService bleService;
   BatteryData _batteryData = BatteryData.empty();
   String _bmsPassword = "1234";
+
+  final RangeEstimator _rangeEstimator = RangeEstimator();
+
+  Future<void> initializeRangeEstimator() async {
+    await _rangeEstimator.loadSavedEstimate();
+  }
 
   // Connection UI States
   bool _isConnected = false;
@@ -19,12 +28,14 @@ class BatteryProvider extends ChangeNotifier {
   BatteryProvider() {
     bleService = BleService(batteryProvider: this);
     loadGarage();
+    initializeRangeEstimator();
   }
 
   BatteryData get batteryData => _batteryData;
   String get bmsPassword => _bmsPassword;
   List<Map<String, String>> get savedGarage => _savedGarage;
   String? get primaryScooterId => _primaryScooterId;
+  RangeEstimator get rangeEstimator => _rangeEstimator;
 
   bool get isConnected => _isConnected;
   bool get isConnecting => _isConnecting;
@@ -34,6 +45,7 @@ class BatteryProvider extends ChangeNotifier {
     double? voltage,
     double? current,
     int? soc,
+    double? remainingCapacityAh,
     double? temperature,
     List<double>? cellVoltages,
     int? cycleCount,
@@ -50,12 +62,32 @@ class BatteryProvider extends ChangeNotifier {
     String? firstOnDate,
     String? totalTime,
   }) {
+    final effectiveVoltage = voltage ?? _batteryData.voltage;
+    final effectiveCurrent = current ?? _batteryData.current;
+    final effectiveSoc = soc ?? _batteryData.soc;
+    final effectiveRemainingCap = remainingCapacityAh ?? _batteryData.remainingCapacityAh;
+
+    if (voltage != null && current != null) {
+      _rangeEstimator.addTelemetry(
+        voltage: effectiveVoltage,
+        current: effectiveCurrent,
+      );
+    }
+
+    final calculatedRange = _rangeEstimator.estimateRangeKm(
+      socPercent: effectiveSoc.toDouble(),
+      remainingCapacityAh: effectiveRemainingCap,
+      packVoltage: effectiveVoltage,
+    );
+
     _batteryData = _batteryData.copyWith(
       voltage: voltage,
       current: current,
       soc: soc,
       power: power,
       temperature: temperature,
+      range: calculatedRange,
+      remainingCapacityAh: remainingCapacityAh,
       cycleCount: cycleCount,
       isCharging: isCharging,
       isDischarging: isDischarging,
@@ -77,9 +109,32 @@ class BatteryProvider extends ChangeNotifier {
   }
 
   void updateBatteryData(BatteryData newData) {
-    _batteryData = newData;
+    _rangeEstimator.addTelemetry(
+      voltage: newData.voltage,
+      current: newData.current,
+    );
+
+    final calculatedRange = _rangeEstimator.estimateRangeKm(
+      socPercent: newData.soc.toDouble(),
+      remainingCapacityAh: newData.remainingCapacityAh,
+      packVoltage: newData.voltage,
+    );
+
+    _batteryData = newData.copyWith(
+      range: calculatedRange,
+    );
+
     _isConnected = newData.isConnected;
     _isConnecting = false;
+    notifyListeners();
+  }
+
+  void addPosition(Position position) {
+    _rangeEstimator.addPosition(position);
+  }
+
+  Future<void> finishRide() async {
+    await _rangeEstimator.finishRide();
     notifyListeners();
   }
 

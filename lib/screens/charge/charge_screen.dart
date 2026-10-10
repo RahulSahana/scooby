@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../providers/battery_provider.dart';
+import '../../theme/app_colors.dart';
 import 'dart:math' as math;
 
 class ChargeScreen extends StatelessWidget {
@@ -34,6 +35,7 @@ class ChargeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final battery = context.watch<BatteryProvider>().batteryData;
+    final theme = Theme.of(context).extension<AppColors>()!;
     final double fillPercentage = battery.soc / 100.0;
 
     // ===================================================
@@ -57,295 +59,281 @@ class ChargeScreen extends StatelessWidget {
       powerLabel = 'Power';
     }
 
-    return Theme(
-      data: ThemeData(
-        brightness: Brightness.light,
-        scaffoldBackgroundColor: const Color(0xFFF9F9F9),
-        fontFamily: 'Roboto',
-      ),
-      child: Scaffold(
-        backgroundColor: const Color(0xFFF9F9F9),
-        body: SafeArea(
-          // Wrap everything in a scroll view to allow cards below
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
+    return Scaffold(
+      backgroundColor: theme.background,
+      body: SafeArea(
+        // Wrap everything in a scroll view to allow cards below
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // ===================================================
+              // HEADER
+              // ===================================================
 
-                // ===================================================
-                // HEADER
-                // ===================================================
+              const SizedBox(height: 30),
 
-                const Divider(color: Color(0xFFE0E0E0), height: 1),
+              // ===================================================
+              // DYNAMIC STATS (Color and Text changes based on state)
+              // ===================================================
+              Column(
+                children: [
+                  Text(
+                    stateText, // Changes to CHARGING, WORKING, or IDLE
+                    style: TextStyle(
+                      color: stateColor, // Changes dynamically
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1.5,
+                    ),
+                  ),
 
-                const SizedBox(height: 30),
+                  const SizedBox(height: 8),
 
-                // ===================================================
-                // DYNAMIC STATS (Color and Text changes based on state)
-                // ===================================================
-                Column(
-                  children: [
-                    Text(
-                      stateText, // Changes to CHARGING, WORKING, or IDLE
-                      style: TextStyle(
-                        color: stateColor, // Changes dynamically
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1.5,
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
+                    children: [
+                      Text(
+                        battery.range.toStringAsFixed(0),
+                        style: TextStyle(
+                          color: theme.primaryText,
+                          fontSize: 64,
+                          fontWeight: FontWeight.w300,
+                        ),
                       ),
-                    ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'km',
+                        style: TextStyle(
+                          color: theme.primaryText,
+                          fontSize: 32,
+                          fontWeight: FontWeight.w300,
+                        ),
+                      ),
+                    ],
+                  ),
 
-                    const SizedBox(height: 8),
+                  const SizedBox(height: 12),
 
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.baseline,
-                      textBaseline: TextBaseline.alphabetic,
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.bolt,
+                        color: stateColor, // Bolt matches state color
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Icon(
+                        _getBatteryIcon(battery.soc),
+                        color: theme.primaryText.withValues(alpha: 0.54),
+                        size: 20,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${battery.soc}%',
+                        style: TextStyle(
+                          color: theme.primaryText,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 30),
+
+              // ===================================================
+              // TIME / ETA ROW
+              // ===================================================
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 40),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    Column(
                       children: [
                         Text(
-                          battery.range.toStringAsFixed(0),
-                          style: const TextStyle(
-                            color: Color(0xFF4A4A4A),
-                            fontSize: 64,
-                            fontWeight: FontWeight.w300,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        const Text(
-                          'km',
+                          TimeOfDay.now().format(context),
                           style: TextStyle(
-                            color: Color(0xFF4A4A4A),
-                            fontSize: 32,
-                            fontWeight: FontWeight.w300,
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 12),
-
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.bolt,
-                          color: stateColor, // Bolt matches state color
-                          size: 20,
-                        ),
-                        const SizedBox(width: 8),
-
-                        // FIX 2: Removed 'const' keyword from this Icon widget
-                        Icon(
-                          _getBatteryIcon(battery.soc),
-                          color: const Color(0xFF4A4A4A),
-                          size: 20,
-                        ),
-
-                        const SizedBox(width: 4),
-                        Text(
-                          '${battery.soc}%',
-                          style: const TextStyle(
-                            color: Color(0xFF4A4A4A),
+                            color: theme.primaryText,
                             fontSize: 16,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${(battery.range).toStringAsFixed(0)} km range',
+                          style: TextStyle(
+                            color: theme.primaryText.withValues(alpha: 0.54),
+                            fontSize: 14,
+                          ),
+                        ),
                       ],
                     ),
-                  ],
-                ),
 
-                const SizedBox(height: 30),
+                    // ==========================================
+                    // CONDITIONAL RIGHT SIDE: DIVIDER & ETA
+                    // ==========================================
+                    if (battery.isCharging) ...[
+                      // THE VERTICAL LINE DIVIDER
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                        child: Container(
+                          width: 1, // 1 pixel wide line
+                          height: 35, // Height of the divider
+                          color: theme.primaryText.withValues(alpha: 0.3),
+                        ),
+                      ),
 
-                // ===================================================
-                // TIME / ETA ROW
-                // ===================================================
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 40),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
+                      // RIGHT SIDE: ETA
                       Column(
                         children: [
                           Text(
-                            TimeOfDay.now().format(context),
-                            style: const TextStyle(
-                              color: Color(0xFF4A4A4A),
+                            // Example ETA calculation: current time + remaining charge time
+                            TimeOfDay.fromDateTime(
+                              DateTime.now().add(
+                                Duration(minutes: ((100 - battery.soc) * 3).toInt()),
+                              ),
+                            ).format(context),
+                            style: TextStyle(
                               fontSize: 16,
-                              fontWeight: FontWeight.w500,
+                              fontWeight: FontWeight.bold,
+                              color: theme.primaryText,
                             ),
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            '${(battery.range).toStringAsFixed(0)} km range',
-                            style: const TextStyle(
-                              color: Color(0xFF9B9B9B),
+                            '100% charge',
+                            style: TextStyle(
                               fontSize: 14,
+                              color: theme.primaryText.withValues(alpha: 0.54),
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
                         ],
                       ),
+                    ],
+                  ],
+                ),
+              ),
 
-                      // ==========================================
-                      // CONDITIONAL RIGHT SIDE: DIVIDER & ETA
-                      // ==========================================
-                      if (battery.isCharging) ...[
+              const SizedBox(height: 30),
 
-                        // THE VERTICAL LINE DIVIDER
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                          child: Container(
-                            width: 1, // 1 pixel wide line
-                            height: 35, // Height of the divider
-                            color: Colors.grey.withValues(alpha: 0.3),
+              // ===================================================
+              // SCOOTER FILL ANIMATION
+              // ===================================================
+              _WavyScooterFill(
+                fillPercentage: fillPercentage,
+                stateColor: stateColor,
+                isCharging: battery.isCharging, // Controls if the wave moves or freezes
+              ),
+
+              // ===================================================
+              // INFO CARDS (Scrollable area)
+              // ===================================================
+              Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'BATTERY VITALS',
+                      style: TextStyle(
+                        color: Color(0xFF9B9B9B),
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Data Row 1
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _LightInfoCard(
+                            title: powerLabel,
+                            value: '${battery.power.abs().toStringAsFixed(0)} W',
+                            icon: Icons.flash_on,
+                            iconColor: Colors.amber,
+                            // No imageColor passed! It will use the original asset colors.
+                            cornerImageAsset: "lib/assets/power.png",
                           ),
                         ),
-
-                        // RIGHT SIDE: ETA
-                        Column(
-                          children: [
-                            Text(
-                              // Example ETA calculation: current time + remaining charge time
-                              TimeOfDay.fromDateTime(
-                                DateTime.now().add(
-                                  Duration(minutes: ((100 - battery.soc) * 3).toInt()),
-                                ),
-                              ).format(context),
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.black87,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            const Text(
-                              '100% charge',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.grey,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: _LightInfoCard(
+                            title: 'Current',
+                            value: '${battery.current.abs().toStringAsFixed(1)} A',
+                            icon: Icons.electric_meter,
+                            iconColor: Colors.blueAccent,
+                            // No imageColor passed!
+                            cornerImageAsset: 'lib/assets/current.png',
+                          ),
                         ),
                       ],
-                    ],
-                  ),
-                ),
+                    ),
 
-                const SizedBox(height: 30),
+                    const SizedBox(height: 16),
 
-                // ===================================================
-                // SCOOTER FILL ANIMATION
-                // ===================================================
-                _WavyScooterFill(
-                  fillPercentage: fillPercentage,
-                  stateColor: stateColor,
-                  isCharging: battery.isCharging, // Controls if the wave moves or freezes
-                ),
-
-                // ===================================================
-                // INFO CARDS (Scrollable area)
-                // ===================================================
-                Padding(
-                  padding: const EdgeInsets.all(24.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'BATTERY VITALS',
-                        style: TextStyle(
-                          color: Color(0xFF9B9B9B),
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 1.2,
+                    // Data Row 2
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _LightInfoCard(
+                            title: 'Temperature',
+                            value: '${battery.temperature}°C',
+                            icon: Icons.thermostat_outlined,
+                            // DYNAMIC COLORS APPLIED HERE
+                            iconColor: _getTemperatureColor(battery.temperature),
+                            imageColor: _getTemperatureColor(battery.temperature),
+                            cornerImageAsset: 'lib/assets/temperature.png',
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Data Row 1
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _LightInfoCard(
-                              title: powerLabel,
-                              value: '${battery.power.abs().toStringAsFixed(0)} W',
-                              icon: Icons.flash_on,
-                              iconColor: Colors.amber,
-                              // No imageColor passed! It will use the original asset colors.
-                              cornerImageAsset: "lib/assets/power.png",
-                            ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: _LightInfoCard(
+                            title: 'Charge Cycles',
+                            value: '${battery.cycleCount}',
+                            icon: Icons.autorenew,
+                            iconColor: const Color(0xFF00BFFF),
+                            imageColor: const Color(0xFF00BFFF),
+                            cornerImageAsset: 'lib/assets/cycle.png',
                           ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: _LightInfoCard(
-                              title: 'Current',
-                              value: '${battery.current.abs().toStringAsFixed(1)} A',
-                              icon: Icons.electric_meter,
-                              iconColor: Colors.blueAccent,
-                              // No imageColor passed!
-                              cornerImageAsset: 'lib/assets/current.png',
-                            ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // Data Row 3
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _LightInfoCard(
+                            title: 'Health (SOH)',
+                            value: '${battery.soh.toStringAsFixed(0)}%',
+                            icon: Icons.health_and_safety,
+                            // DYNAMIC COLORS APPLIED HERE
+                            iconColor: _getSohColor(battery.soh),
+                            imageColor: _getSohColor(battery.soh),
+                            cornerImageAsset: 'lib/assets/charge_ev_trans.png',
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
+                    ),
 
-                      const SizedBox(height: 16),
-
-                      // Data Row 2
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _LightInfoCard(
-                              title: 'Health (SOH)',
-                              value: '${battery.soh.toStringAsFixed(0)}%',
-                              icon: Icons.health_and_safety,
-                              // DYNAMIC COLORS APPLIED HERE
-                              iconColor: _getSohColor(battery.soh),
-                              imageColor: _getSohColor(battery.soh),
-                              cornerImageAsset: 'lib/assets/charge_ev_trans.png',
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: _LightInfoCard(
-                              title: 'Charge Cycles',
-                              value: '${battery.cycleCount}',
-                              icon: Icons.autorenew,
-                              iconColor: const Color(0xFF00BFFF),
-                              imageColor: const Color(0xFF00BFFF),
-                              cornerImageAsset: 'lib/assets/cycle.png',
-                            ),
-                          ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 16),
-
-                      // Data Row 3
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _LightInfoCard(
-                              title: 'Temperature',
-                              value: '${battery.temperature}°C',
-                              icon: Icons.thermostat_outlined,
-                              // DYNAMIC COLORS APPLIED HERE
-                              iconColor: _getTemperatureColor(battery.temperature),
-                              imageColor: _getTemperatureColor(battery.temperature),
-                              cornerImageAsset: 'lib/assets/temperature.png',
-                            ),
-                          ),
-                        ],
-                      ),
-
-                      // Extra padding for the bottom navigation bar
-                      const SizedBox(height: 40),
-                    ],
-                  ),
+                    // Extra padding for the bottom navigation bar
+                    const SizedBox(height: 40),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
@@ -479,14 +467,15 @@ class _LightInfoCard extends StatelessWidget {
   Widget build(BuildContext context) {
     // Default fallback color if none is provided
     final effectiveIconColor = iconColor ?? Colors.black54;
+    final theme = Theme.of(context).extension<AppColors>()!;
 
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: theme.cardColor,
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withValues(alpha: 0.08),
+            color: Colors.black.withValues(alpha: 0.08),
             blurRadius: 15,
             offset: const Offset(0, 8),
           ),
@@ -546,8 +535,8 @@ class _LightInfoCard extends StatelessWidget {
                         child: Text(
                           title,
                           maxLines: 1,
-                          style: const TextStyle(
-                            color: Colors.black54,
+                          style: TextStyle(
+                            color: theme.primaryText.withValues(alpha: 0.54),
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
                           ),
@@ -560,8 +549,8 @@ class _LightInfoCard extends StatelessWidget {
                         child: Text(
                           value,
                           maxLines: 1,
-                          style: const TextStyle(
-                            color: Colors.black87,
+                          style: TextStyle(
+                            color: theme.primaryText,
                             fontSize: 24,
                             fontWeight: FontWeight.bold,
                           ),
