@@ -5,11 +5,18 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../data/battery_data.dart';
 import '../services/ble/ble_service.dart';
 import '../services/range_estimator.dart';
+import '../services/notification_service.dart';
 
 class BatteryProvider extends ChangeNotifier {
   late BleService bleService;
   BatteryData _batteryData = BatteryData.empty();
   String _bmsPassword = "1234";
+
+  bool _chargingAlertShown = false;
+  bool _temperatureAlertShown = false;
+  bool _rangeAlertShown = false;
+
+  Future<void> _alertCheckQueue = Future<void>.value();
 
   final RangeEstimator _rangeEstimator = RangeEstimator();
 
@@ -24,6 +31,8 @@ class BatteryProvider extends ChangeNotifier {
   // The Garage Memory
   List<Map<String, String>> _savedGarage = [];
   String? _primaryScooterId;
+
+
 
   BatteryProvider() {
     bleService = BleService(batteryProvider: this);
@@ -62,6 +71,7 @@ class BatteryProvider extends ChangeNotifier {
     String? firstOnDate,
     String? totalTime,
   }) {
+    final previousBatteryData = _batteryData;
     final effectiveVoltage = voltage ?? _batteryData.voltage;
     final effectiveCurrent = current ?? _batteryData.current;
     final effectiveSoc = soc ?? _batteryData.soc;
@@ -103,12 +113,15 @@ class BatteryProvider extends ChangeNotifier {
       totalTime: totalTime ?? _batteryData.totalTime,
     );
 
+    _queueAlertCheck(previousBatteryData, _batteryData);
+
     if (isConnected != null) _isConnected = isConnected;
     if (_isConnected) _isConnecting = false;
     notifyListeners();
   }
 
   void updateBatteryData(BatteryData newData) {
+    final previousBatteryData = _batteryData;
     _rangeEstimator.addTelemetry(
       voltage: newData.voltage,
       current: newData.current,
@@ -124,6 +137,8 @@ class BatteryProvider extends ChangeNotifier {
       range: calculatedRange,
     );
 
+    _queueAlertCheck(previousBatteryData, _batteryData);
+
     _isConnected = newData.isConnected;
     _isConnecting = false;
     notifyListeners();
@@ -138,9 +153,19 @@ class BatteryProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void setConnectionState(bool connected) {
+  void setConnectionState(
+      bool connected, {
+        bool unexpectedDisconnect = false,
+      }) {
+    final wasConnected = _isConnected;
+
     _isConnected = connected;
     if (connected) _isConnecting = false;
+
+    if (!connected && wasConnected && unexpectedDisconnect) {
+      _sendDisconnectAlert();
+    }
+
     notifyListeners();
   }
 
@@ -214,5 +239,68 @@ class BatteryProvider extends ChangeNotifier {
 
   void toggleDischarging(bool value) {
     bleService.toggleDischargeMosfet(value);
+  }
+
+  void _queueAlertCheck(BatteryData previous, BatteryData current) {
+    _alertCheckQueue = _alertCheckQueue
+        .then((_) => _checkAlerts(previous, current))
+        .catchError((Object error) {
+      debugPrint('Notification check failed: $error');
+    });
+  }
+
+  Future<void> _checkAlerts(
+      BatteryData previous,
+      BatteryData current,
+      ) async {
+    final prefs = await SharedPreferences.getInstance();
+    final notifications = NotificationService.instance;
+
+    final chargingEnabled =
+        prefs.getBool('battery_percent_alert_enabled') ?? false;
+    final chargingThreshold =
+        prefs.getInt('battery_percent_alert_threshold') ?? 80;
+
+    if (!chargingEnabled || !current.isCharging || current.soc < chargingThreshold) {
+      _chargingAlertShown = false;
+    } else if (!_chargingAlertShown) {
+      _chargingAlertShown = true;
+      await notifications.showChargingAlert(batteryPercent: current.soc);
+    }
+
+    final temperatureEnabled =
+        prefs.getBool('temperature_alert_enabled') ?? false;
+    final temperatureThreshold =
+        prefs.getInt('temperature_alert_threshold_c') ?? 50;
+
+    if (!temperatureEnabled ||
+        current.temperature < temperatureThreshold - 2) {
+      _temperatureAlertShown = false;
+    } else if (current.temperature >= temperatureThreshold &&
+        !_temperatureAlertShown) {
+      _temperatureAlertShown = true;
+      await notifications.showTemperatureAlert(
+        temperatureCelsius: current.temperature,
+      );
+    }
+
+    final rangeEnabled = prefs.getBool('range_alert_enabled') ?? false;
+    final rangeThreshold = prefs.getInt('range_alert_threshold_km') ?? 10;
+
+    if (!rangeEnabled || current.range > rangeThreshold + 2) {
+      _rangeAlertShown = false;
+    } else if (current.range > 0 &&
+        current.range <= rangeThreshold &&
+        !_rangeAlertShown) {
+      _rangeAlertShown = true;
+      await notifications.showRangeAlert(rangeKm: current.range);
+    }
+  }
+
+  Future<void> _sendDisconnectAlert() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool('disconnect_alert_enabled') ?? false) {
+      await NotificationService.instance.showDisconnectAlert();
+    }
   }
 }

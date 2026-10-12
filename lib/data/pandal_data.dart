@@ -15,6 +15,10 @@ const List<String> pandalAreas = [
   'Kolkata',
   'Bardhaman',
   'Tarakeswar',
+  'Memari',
+  'Borshul',
+  'Dhaniakhali',
+  'Jamalpur',
 ];
 
 const List<PandalEntry> pandalCatalog = [
@@ -175,10 +179,341 @@ const List<PandalEntry> pandalCatalog = [
       longitude: 87.87063593076678,
     ),
   ),
+  //===================================
+  /// Memari Pandal stops
+  //===================================
+  PandalEntry(
+    area: 'Memari',
+    stop: PandalStop(
+      id: 'memari-checkpost-bus-stop',
+      name: 'Memari CheckPost Bus stop',
+      latitude: 23.177736186045138,
+      longitude: 88.0902941798166,
+    ),
+  ),
+  PandalEntry(
+    area: 'Memari',
+    stop: PandalStop(
+      id: 'dakshin-memari-durga-mandir',
+      name: 'Dakshin Memari Durga Mandir',
+      latitude: 23.16920528616337,
+      longitude: 88.09654078845605,
+    ),
+  ),
+  PandalEntry(
+    area: 'Memari',
+    stop: PandalStop(
+      id: 'sridurgapally-durga-puja',
+      name: 'Sridurgapally Durga Puja',
+      latitude: 23.171179143225938,
+      longitude: 88.09507147527822,
+    ),
+  ),
+  PandalEntry(
+    area: 'Memari',
+    stop: PandalStop(
+      id: 'someshwar-temple',
+      name: 'Someshwar Temple',
+      latitude: 23.17434452239649,
+      longitude: 88.09907995191938,
+    ),
+  ),
+  PandalEntry(
+    area: 'Memari',
+    stop: PandalStop(
+      id: 'memari-hospital-more-bus-stop',
+      name: 'Memari Hospital More Bus Stop',
+      latitude: 23.17931189786687,
+      longitude: 88.10270430771216,
+    ),
+  ),
+  PandalEntry(
+    area: 'Memari',
+    stop: PandalStop(
+      id: 'memari-new-bus-stand-durga-pujo',
+      name: 'Memari New bus stand durga pujo',
+      latitude: 23.176463254896415,
+      longitude: 88.09459493977177,
+    ),
+  ),
+  PandalEntry(
+    area: 'Memari',
+    stop: PandalStop(
+      id: 'memari-sonapatti-sarbojonin-durga-puja',
+      name: 'Memari Sonapatti Sarbojonin Durga Puja',
+      latitude: 23.173207829176203,
+      longitude: 88.09923755111222,
+    ),
+  ),
+  PandalEntry(
+    area: 'Memari',
+    stop: PandalStop(
+      id: 'krishna-bazer-sarbojonin-durga-puja',
+      name: 'Krishna Bazer Sarbojonin Durga Puja',
+      latitude: 23.170551933016803,
+      longitude: 88.10008512481403,
+    ),
+  ),
+  PandalEntry(
+    area: 'Memari',
+    stop: PandalStop(
+      id: 'memari-duttapara-laha-pujabari',
+      name: 'Memari Duttapara Laha Pujabari',
+      latitude: 23.172742647961584,
+      longitude: 88.09995448583096,
+    ),
+  ),
+  PandalEntry(
+    area: 'Memari',
+    stop: PandalStop(
+      id: 'mayer-kole-sarbojonin-durga-puja',
+      name: 'Mayer Kole Sarbojonin Durga Puja',
+      latitude: 23.17838649218034,
+      longitude: 88.09902799913276,
+    ),
+  ),
+  PandalEntry(
+    area: 'Memari',
+    stop: PandalStop(
+      id: 'memari-saradanjali-sarbojonin-durga-puja',
+      name: 'Memari Saradanjali Sarbojonin Durga Puja',
+      latitude: 23.179153130718067,
+      longitude: 88.0886596534033,
+    ),
+  ),
+  PandalEntry(
+    area: 'Memari',
+    stop: PandalStop(
+      id: 'memari-station-bazaar-sarbojonin-durga-puja',
+      name: 'Memari Station Bazaar Sarbojonin Durga Puja',
+      latitude: 23.172940289504663,
+      longitude: 88.09699823301276
+    ),
+  ),
+  PandalEntry(
+    area: 'Memari',
+    stop: PandalStop(
+      id: 'saradapally-aurobindapally-durga-puja-mandap',
+      name: 'Saradapally & Aurobindapally Durga Puja Mandap',
+      latitude: 23.177698590244397,
+      longitude: 88.09260443312256,
+    ),
+  ),
+  //===================================
+  /// Borshul Pandal stops
+  //===================================
+  PandalEntry(
+    area: 'Borshul',
+    stop: PandalStop(
+      id: 'barsul-young-mens-association',
+      name: "Barsul Young Mens' Association",
+      latitude: 23.18396470670496,
+      longitude: 87.96315117255027,
+    ),
+  ),
+  PandalEntry(
+    area: 'Borshul',
+    stop: PandalStop(
+      id: 'byma-durga-puja',
+      name: 'BYMA DURGA PUJA',
+      latitude: 23.182428671225463,
+      longitude: 87.96402741788629,
+    ),
+  ),
+  PandalEntry(
+    area: 'Borshul',
+    stop: PandalStop(
+      id: 'barsul-jagarani-club',
+      name: 'Barsul Jagarani Club',
+      latitude: 23.183302452736804,
+      longitude: 87.96177927768912,
+    ),
+  ),
+  PandalEntry(
+    area: 'Borshul',
+    stop: PandalStop(
+      id: 'annadapalli-jamini-smriti-sangha-barsul',
+      name: 'Annadapalli Jamini Smriti Sangha, Barsul',
+      latitude: 23.18534979315168,
+      longitude: 87.97188400864754,
+    ),
+  ),
+
+
+  //===================================
+  /// Jamalpur Pandal stops
+  //===================================
+  PandalEntry(
+    area: 'Jamalpur',
+    stop: PandalStop(
+      id: 'harala-durgatola',
+      name: 'HARALA DURGATOLA',
+      latitude: 23.0425,
+      longitude: 87.9710,
+    ),
+  ),
+  PandalEntry(
+    area: 'Jamalpur',
+    stop: PandalStop(
+      id: 'jamalpur-netaji-math',
+      name: 'Jamalpur Netaji Math',
+      latitude: 23.0330,
+      longitude: 87.9620,
+    ),
+  ),
+  PandalEntry(
+    area: 'Jamalpur',
+    stop: PandalStop(
+      id: 'toll-booth',
+      name: 'Toll Booth',
+      latitude: 23.0380,
+      longitude: 87.9540,
+    ),
+  ),
+  PandalEntry(
+    area: 'Jamalpur',
+    stop: PandalStop(
+      id: 'kanshra-bhubaneswar-tala-shiva-temple',
+      name: 'Kanshra Bhubaneswar Tala Shiva Temple',
+      latitude: 23.0080,
+      longitude: 87.9580,
+    ),
+  ),
+
+  //===================================
+  /// Dhaniakhali Pandal stops
+  //===================================
+
+  PandalEntry(
+    area: 'Dhaniakhali',
+    stop: PandalStop(
+      id: 'chakdighi-milan-sangha',
+      name: 'Chakdighi Milan Sangha',
+      latitude: 22.9560,
+      longitude: 87.9610,
+    ),
+  ),
+  PandalEntry(
+    area: 'Dhaniakhali',
+    stop: PandalStop(
+      id: 'dasghara-bazarpara-sarbojonin-durga-puja-pandal',
+      name: 'Dasghara Bazarpara Sarbojonin Durga Puja pandal',
+      latitude: 22.9320,
+      longitude: 87.9940,
+    ),
+  ),
+  PandalEntry(
+    area: 'Dhaniakhali',
+    stop: PandalStop(
+      id: 'kananadi-durgapuja',
+      name: 'Kananadi Durgapuja',
+      latitude: 22.9360,
+      longitude: 88.0290,
+    ),
+  ),
+  PandalEntry(
+    area: 'Dhaniakhali',
+    stop: PandalStop(
+      id: 'rohia-nabin-sangha',
+      name: 'Rohia Nabin Sangha',
+      latitude: 22.9730,
+      longitude: 88.0820,
+    ),
+  ),
+  PandalEntry(
+    area: 'Dhaniakhali',
+    stop: PandalStop(
+      id: 'dhaniakhali-bus-terminus',
+      name: 'Dhaniakhali Bus Terminus',
+      latitude: 22.9520,
+      longitude: 88.0850,
+    ),
+  ),
+  PandalEntry(
+    area: 'Dhaniakhali',
+    stop: PandalStop(
+      id: 'mukundapur-durga-puja-mandap',
+      name: 'Mukundapur Durga Puja Mandap',
+      latitude: 22.9430,
+      longitude: 88.0690,
+    ),
+  ),
 
   //===================================
   /// Tarakeswar Pandal stops
   //===================================
-  // Add verified pandals for Bardhaman and Tarakeswar here.
-  // Use each pandal's actual latitude and longitude.
+
+  PandalEntry(
+    area: 'Tarakeswar',
+    stop: PandalStop(
+      id: 'bhootnath-mandir',
+      name: 'Bhootnath mandir',
+      latitude: 22.8850,
+      longitude: 88.0220,
+    ),
+  ),
+  PandalEntry(
+    area: 'Tarakeswar',
+    stop: PandalStop(
+      id: 'hooghly-west-bengal-712410',
+      name: 'Hooghly West Bengal 712410',
+      latitude: 22.9000,
+      longitude: 88.0200,
+    ),
+  ),
+  PandalEntry(
+    area: 'Tarakeswar',
+    stop: PandalStop(
+      id: 'durga-mandir',
+      name: 'Durga Mandir',
+      latitude: 22.9100,
+      longitude: 88.0050,
+    ),
+  ),
+  PandalEntry(
+    area: 'Tarakeswar',
+    stop: PandalStop(
+      id: 'tarkeshwar',
+      name: 'Tarkeshwar',
+      latitude: 22.8875,
+      longitude: 88.0245,
+    ),
+  ),
+  PandalEntry(
+    area: 'Tarakeswar',
+    stop: PandalStop(
+      id: 'ths-durga-puja-pandal',
+      name: 'THS durga puja pandal',
+      latitude: 22.8900,
+      longitude: 88.0150,
+    ),
+  ),
+  PandalEntry(
+    area: 'Tarakeswar',
+    stop: PandalStop(
+      id: 'sahapur-playground',
+      name: 'Sahapur Playground',
+      latitude: 22.8900,
+      longitude: 88.0190,
+    ),
+  ),
+  PandalEntry(
+    area: 'Tarakeswar',
+    stop: PandalStop(
+      id: 'netaji-subhas-road-durga-puja-committee',
+      name: 'Netaji Subhas Road Durga Puja Committee',
+      latitude: 22.8890,
+      longitude: 88.0210,
+    ),
+  ),
+  PandalEntry(
+    area: 'Tarakeswar',
+    stop: PandalStop(
+      id: 'chaoulpatty-durgamata-temple',
+      name: 'Chaoulpatty Durgamata Temple',
+      latitude: 22.8860,
+      longitude: 88.0230,
+    ),
+  ),
+
 ];

@@ -22,12 +22,8 @@ class NotificationService {
 
     return await android?.requestNotificationsPermission() ?? false;
   }
-//===============================
-///  CHARGING ALERT
-//=================================
-  Future<void> showChargingAlert({
-    required int batteryPercent,
-  }) async {
+
+  Future<void> showChargingAlert({required int batteryPercent}) async {
     const details = NotificationDetails(
       android: AndroidNotificationDetails(
         'scooby_battery_alerts',
@@ -45,9 +41,7 @@ class NotificationService {
       notificationDetails: details,
     );
   }
-  //=======================
-  ///  TEMPERATURE ALERT
-  //=======================
+
   Future<void> showTemperatureAlert({
     required double temperatureCelsius,
   }) async {
@@ -62,10 +56,49 @@ class NotificationService {
     );
 
     await _plugin.show(
-      id: 2, // Use a different ID from the charging alert.
+      id: 2,
       title: 'Scooby temperature alert',
       body: 'Your battery temperature has reached '
           '${temperatureCelsius.toStringAsFixed(1)}°C.',
+      notificationDetails: details,
+    );
+  }
+
+  Future<void> showRangeAlert({required double rangeKm}) async {
+    const details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        'scooby_range_alerts',
+        'Range alerts',
+        channelDescription: 'Low remaining range alerts',
+        importance: Importance.high,
+        priority: Priority.high,
+      ),
+    );
+
+    await _plugin.show(
+      id: 3,
+      title: 'Scooby low range alert',
+      body: 'Estimated remaining range is '
+          '${rangeKm.toStringAsFixed(1)} km.',
+      notificationDetails: details,
+    );
+  }
+
+  Future<void> showDisconnectAlert() async {
+    const details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        'scooby_connection_alerts',
+        'Connection alerts',
+        channelDescription: 'Scooter Bluetooth connection alerts',
+        importance: Importance.high,
+        priority: Priority.high,
+      ),
+    );
+
+    await _plugin.show(
+      id: 4,
+      title: 'Scooby disconnected',
+      body: 'The scooter lost its Bluetooth connection.',
       notificationDetails: details,
     );
   }

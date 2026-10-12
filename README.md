@@ -1,85 +1,115 @@
-# Scooby — Professional EV Dashboard for JK BMS
+# Scooby
 
-**Scooby** is a high-performance Flutter application designed to interface directly with electric vehicle drivetrains via Bluetooth Low Energy (BLE). It provides a premium, real-time dashboard for vehicles equipped with **JK Battery Management Systems (BMS)**, combining deep telemetry insights with hardware-level security controls.
+Scooby is a Flutter companion app for electric vehicles equipped with a compatible JK Battery Management System (BMS). It connects over Bluetooth Low Energy (BLE) to present battery information, charging status, vehicle range estimates, and route progress in one place.
 
-> **Note on structure:** This document is an excerpted set of sections from a larger internal reference (hence the non-sequential Part numbers — e.g. Part 5 is followed by Part 8). Numbering has been left as-is to match the source; missing parts were not included in this excerpt.
+> Available readings and controls depend on the connected BMS, vehicle configuration, permissions, and app connection state. Treat estimates as guidance; the BMS and vehicle hardware remain authoritative.
 
----
+## Features
 
-# PART 1 — PROJECT OVERVIEW
+### Battery dashboard
 
-## 2-Minute Interview Answer
+- Displays battery state of charge (SOC) and state of health (SOH), along with pack voltage, current, power, and temperature when those values are provided by the connected device.
+- Shows charging or discharging status, cell voltage readings, cycle count, and available device metadata.
+- Presents battery information in a dashboard designed for at-a-glance use.
 
-> "Scooby is a specialized Flutter application designed to interface directly with electric vehicle drivetrains via Bluetooth Low Energy (BLE). It specifically targets vehicles using JK Battery Management Systems (BMS).
->
-> The project solves the critical problem of 'telemetry transparency' — most budget or DIY EV conversions lack a sophisticated dashboard. Scooby provides real-time monitoring of voltage, current, and cell-level health, while also acting as a security tool with a remote 'Motor Kill Switch' and Charge Cutoff.
->
-> Technologically, I built a custom binary protocol parser to handle the JK BMS frame structure (`0x55 0xAA 0xEB 0x90` header). I used Provider for state management and FlutterBluePlus for the BLE stack. One of the highlights is a robust Stateful Auto-Reconnection Loop and a Software Safety Interlock that prevents hazardous hardware commands from executing while the vehicle is in motion. It's an example of how high-level cross-platform UI can securely manage low-level hardware."
+### Charging view
 
----
+- Shows charging status and available charging power information.
+- Estimates remaining charging time when the required telemetry is available.
+- Uses an animated battery visualization to make charging progress easy to follow.
 
-## 5-Minute Detailed Answer
+### BLE connection and garage
 
-The project serves EV enthusiasts and micro-mobility owners who need a reliable dashboard.
+- Supports BLE scanning and connection to compatible JK BMS devices.
+- Attempts to reconnect after an unexpected disconnection and can automatically connect to a previously selected device.
+- Keeps saved vehicle/device entries available in the garage between app launches.
+- Connection status is reflected in the interface so readings can be interpreted in context.
 
-### Main Features
+### JK BMS controls and safety
 
-1. **Live Telemetry:** Real-time stream of pack voltage, current (A), and power (W).
-2. **Cell Diagnostics:** Visualizing individual cell voltages (up to 24–32S) to detect imbalances before they lead to battery failure.
-3. **Hardware Overrides:** Toggleable MOSFETs for charging and discharging.
-4. **Intelligent Safety:** The 'Interlock' system monitors discharge current; if the motor is pulling power, the UI physically locks the 'Motor Power' and 'Charge' switches to prevent MOSFET arcing or sudden propulsion loss.
-5. **Garage Management:** Remembers the MAC addresses of multiple scooters for instant auto-connecting on launch.
+- Provides a command service for supported JK BMS operations, including charging and discharging MOSFET controls where supported by the device.
+- Applies software interlocks to reduce the risk of changing MOSFET state under unsafe operating conditions, such as while discharge current indicates that the vehicle is under load.
+- Hardware commands depend on device support, valid authorization, and a live BLE connection. Confirm device state from returned telemetry where available.
 
-### Major Technical Components
+### Remaining range
 
-- **Protocol Layer:** A manual binary parser using `ByteData` to decode little-endian integers and ASCII strings from raw BLE notify chunks.
-- **Command Pipeline:** A serialized write pipeline that handles the mandatory 10-digit authentication handshake (`802626052E`) before executing register writes.
-- **UI System:** A unified design system using Theme Extensions for Light/Dark mode and `FittedBox` text scaling to handle high-accessibility font settings without layout breakage.
+- Estimates remaining distance using GPS distance travelled and observed SOC consumption when enough reliable trip data is available.
+- Uses a configured or observed kilometres-per-SOC estimate as a fallback when trip consumption data is not yet sufficient.
+- Filters GPS readings by reported accuracy to avoid treating poor location fixes as reliable distance.
+- Range is an estimate and may vary with terrain, speed, load, temperature, riding style, and battery condition.
 
-### Why This Tech?
+### Routes and pandal hopping
 
-- **Flutter:** Chosen for its ability to create high-performance custom animations (like the sine-wave battery fill) and consistent BLE performance on both Android and iOS.
-- **Provider:** For its simplicity in small-to-medium hardware-driven apps, allowing a clean bridge between the `BleService` and the UI.
-- **Shared Preferences:** Used for persistent storage of 'Garage' metadata and user preferences.
+- Uses Mappls-based route and navigation information for planning and following a pandal-hopping trip.
+- Tracks route distance remaining, the next pandal, estimated arrival time, and completed pandals when route data is available.
+- Compares the estimated remaining range with the trip distance to help assess whether the planned route appears feasible.
+- Map coverage, location permissions, network access, and routing availability can affect these features.
 
-### Architecture
+### Profile and preferences
 
-The app follows a Service-Based MVVM architecture. The `BatteryProvider` acts as the single source of truth (the ViewModel), delegating hardware complexity to the `BleService` and protocol complexity to the `JkBmsParser`.
+- Includes profile, security, and app/BMS information sections.
+- Supports light and dark themes and stores user preferences between sessions.
 
----
+## How the app is organized
 
-# PART 2 — COMPLETE PROJECT STRUCTURE
+The app separates the interface, application state, BLE communication, protocol handling, and telemetry models. In the current documented structure, the provider coordinates UI state, BLE services manage the device connection, and dedicated parser/command components handle BMS frames and supported writes.
 
-```
+```text
 Scooby/
 ├── lib/
-│   ├── core/
-│   │   └── utils/
-│   │       └── jk_code_generator.dart    # Logic for generating time-based BMS codes
-│   ├── models/
-│   │   └── battery_data.dart             # Immutable Data Model for telemetry
-│   ├── parsers/
-│   │   └── jk_bms_parser.dart            # The "Brain": Binary protocol decoding
-│   ├── providers/
-│   │   ├── battery_provider.dart         # Central State & Logic bridge
-│   │   └── theme_provider.dart           # Theme state persistence
-│   ├── screens/
-│   │   ├── charge/                       # Wavy animation & ETA logic
-│   │   ├── connect/                      # Radar scanning & Auto-connect loop
-│   │   ├── home/                         # Motion GIF & Vital Stats
-│   │   └── profile/                      # Security, Garage & About BMS
-│   ├── services/
-│   │   ├── ble_service.dart              # Bluetooth lifecycle & frame routing
-│   │   └── jk_command_service.dart       # Frame builder & Secure Write pipeline
-│   ├── theme/
-│   │   └── app_colors.dart               # Theme Extensions (Semantic Tokens)
-│   ├── widgets/
-│   │   ├── battery_arc.dart              # Custom Gauge widget
-│   │   └── connection_badge.dart         # Stateful Interactive status button
-│   └── main.dart                         # App Entry, Theme & PageView Nav
-├── pubspec.yaml                          # Dependency management (FBP, Provider, etc.)
-└── android/                              # Android specific Manifest/Permissions
+│   ├── core/                 # Shared utilities
+│   ├── models/               # Telemetry and device data models
+│   ├── parsers/              # JK BMS response parsing
+│   ├── providers/            # App, battery, and theme state
+│   ├── screens/              # Dashboard, charging, connect, route, profile
+│   ├── services/             # BLE lifecycle and BMS commands
+│   ├── theme/                # Colors and theme definitions
+│   ├── widgets/              # Reusable dashboard components
+│   └── main.dart             # App entry point and navigation
+├── pubspec.yaml              # Flutter dependencies and assets
+└── android/                  # Android platform configuration
 ```
+
+Names and directories may vary as the project evolves. Refer to the source tree for the current implementation.
+
+## Data and command flow
+
+```text
+JK BMS ──BLE notifications──> BLE service ──> frame parser ──> app state ──> screens
+Screens ──user action──> app state ──> command service ──BLE write──> JK BMS
+GPS / Mappls ──location and route data──> trip and route estimates ──> screens
+```
+
+Telemetry is decoded before it is exposed to the dashboard. Commands flow through the app's command layer and are subject to the relevant connection, authorization, and safety checks. GPS and route data support trip estimates and navigation; they do not replace BMS readings.
+
+## BLE and BMS protocol
+
+Scooby communicates with compatible devices over BLE. Device discovery, service and characteristic identifiers, frame layout, authentication, and byte order must match the connected JK BMS model and firmware.
+
+The project notes describe a JK frame header as `55 AA EB 90`, with response categories for settings, cell information, and device information. Verify these details against the parser and captures from the target device before relying on them: JK BMS models and firmware may differ, and protocol constants should not be assumed universal. The implementation may buffer notification chunks and assemble complete frames before parsing.
+
+Do not infer a fixed frame length, register map, authentication value, or checksum algorithm from this overview. Those are implementation- and firmware-specific details. Keep credentials out of ordinary preference storage; use platform-secure storage where credentials must be persisted.
+
+## Range and route estimates
+
+When trip data is available, the range estimator can compare GPS-measured distance with the observed change in SOC to estimate consumption. A kilometres-per-SOC fallback can provide an initial estimate when there is not enough trip history. GPS accuracy filtering helps reject low-quality location updates. Estimates become more useful as reliable trip data accumulates, but they remain approximate.
+
+Route feasibility is a comparison between the estimated remaining range and the distance of the selected route. It should be interpreted as a planning aid, with allowance for conditions that can change energy use or route distance.
+
+## Safety and operating notes
+
+- MOSFET controls affect vehicle hardware. Use them only when the connected device supports the operation and the vehicle is in a safe state.
+- Software interlocks reduce risk but cannot guarantee hardware safety or account for every vehicle configuration. Follow the vehicle and BMS manufacturer's guidance.
+- BLE readings can be delayed, incomplete, or unavailable during disconnection. Check connection status before acting on displayed values.
+- SOC, SOH, charging time, and range are estimates or BMS-reported values; accuracy depends on the device and available data.
+- Grant location and Bluetooth permissions only as needed for the features being used.
+
+## Development notes
+
+The documented app uses Flutter, Provider-style state management, and a BLE service layer. The exact packages, platform requirements, build commands, and supported devices should be taken from the current `pubspec.yaml`, platform configuration, and source code rather than assumed from this overview.
+
+When extending the app, keep protocol decoding separate from presentation, handle partial or malformed BLE data safely, serialize device writes as required by the BMS, and ensure the UI reflects confirmed device state where confirmation is available.
+
 
 ### Architecture Analysis
 

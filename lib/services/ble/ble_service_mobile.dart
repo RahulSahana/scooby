@@ -67,8 +67,10 @@ class BleService extends BleServiceBase {
 
     _connectionStateSubscription = device.connectionState.listen((state) {
       if (state == BluetoothConnectionState.disconnected) {
-        _onDeviceDisconnected();
-        if (!_isIntentionallyDisconnected) _startAutoReconnectLoop();
+        final unexpected = !_isIntentionallyDisconnected;
+        _onDeviceDisconnected(unexpected: unexpected);
+
+        if (unexpected) _startAutoReconnectLoop();
       } else if (state == BluetoothConnectionState.connected) {
         _autoReconnectTimer?.cancel();
         batteryProvider.setConnectionState(true);
@@ -182,11 +184,15 @@ class BleService extends BleServiceBase {
     }
   }
 
-  void _onDeviceDisconnected() {
+  void _onDeviceDisconnected({bool unexpected = false}) {
     stopPolling();
     packetBuffer.clear();
     jkCharacteristic = null;
-    batteryProvider.setConnectionState(false);
+
+    batteryProvider.setConnectionState(
+      false,
+      unexpectedDisconnect: unexpected,
+    );
   }
 
   @override

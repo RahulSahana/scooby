@@ -9,7 +9,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../providers/battery_provider.dart';
 import '../../providers/theme_provider.dart';
 import '../../theme/app_colors.dart';
-import '../../widgets/battery_alert_settings.dart';
 import '../../widgets/notification.dart';
 
 class ProfileScreen extends StatefulWidget {
