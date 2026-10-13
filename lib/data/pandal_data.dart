@@ -32,6 +32,15 @@ const List<PandalEntry> pandalCatalog = [
     ),
   ),
   PandalEntry(
+    area: 'All areas',
+    stop: PandalStop(
+      id: 'angel-ivf-diagnostic-centre',
+      name: 'Angel IVF & Diagnostic Centre',
+      latitude: 23.04416849652586,
+      longitude: 87.98542282148246,
+    ),
+  ),
+  PandalEntry(
     area: 'Kolkata',
     stop: PandalStop(
       id: 'college-square',

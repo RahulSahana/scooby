@@ -5,11 +5,14 @@ import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../providers/battery_provider.dart';
 import '../../providers/theme_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/notification.dart';
+const String latestReleaseUrl =
+    'https://github.com/OWNER/REPOSITORY/releases/latest';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -19,6 +22,7 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
+
   late final TextEditingController _passwordController;
 
   String _userName = 'Rahul Sahana';
@@ -642,6 +646,56 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
             const SizedBox(height: 28),
+
+//==============================================================
+//                         LATEST RELEASE
+//==============================================================
+            _sectionLabel('Latest Release', colors),
+            _panel(
+              colors: colors,
+              child: ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(
+                  'Download latest APK',
+                  style: TextStyle(
+                    color: colors.primaryText,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                subtitle: Text(
+                  'View or download the latest Scooby release',
+                  style: TextStyle(color: colors.secondaryText),
+                ),
+                leading: Icon(
+                  Icons.system_update_rounded,
+                  color: scheme.primary,
+                ),
+                trailing: Icon(
+                  Icons.open_in_new_rounded,
+                  color: colors.secondaryText,
+                ),
+                onTap: () async {
+                  final uri = Uri.parse(
+                    'https://github.com/OWNER/REPOSITORY/releases/latest',
+                  );
+
+                  final opened = await launchUrl(
+                    uri,
+                    mode: LaunchMode.externalApplication,
+                  );
+
+                  if (!opened && context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Could not open the release link.'),
+                      ),
+                    );
+                  }
+                },
+              ),
+            ),
+            const SizedBox(height: 28),
+
 //***************************************************
             ///          ABOUT BMS
 //***************************************************

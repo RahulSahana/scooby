@@ -601,7 +601,7 @@ class _NavigateScreenState extends State<NavigateScreen> {
               ),
               const SizedBox(height: 12),
 
-              if (!hasStartedTrip)
+              if (!hasStartedTrip) ...[
                 _PlanTripCard(
                   stops: trip.stops,
                   cardColor: appColors.cardColor,
@@ -612,7 +612,52 @@ class _NavigateScreenState extends State<NavigateScreen> {
                   onRemoveStop: _removeStop,
                   onNavigate: trip.stops.isEmpty ? null : _startNavigation,
                   onGoogleMaps: trip.stops.isEmpty ? null : () => _openGoogleMaps(trip),
-                )
+                ),
+                if (trip.savedTrips.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  Text(
+                    'SAVED TRIPS',
+                    style: TextStyle(
+                      color: muted,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  ...trip.savedTrips.map(
+                    (saved) => Card(
+                      color: appColors.cardColor,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: ListTile(
+                        title: Text(
+                          saved.name,
+                          style: TextStyle(
+                            color: appColors.primaryText,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        subtitle: Text(
+                          saved.description.isEmpty
+                              ? '${saved.stops.length} stops'
+                              : '${saved.description} · ${saved.stops.length} stops',
+                          style: TextStyle(color: muted),
+                        ),
+                        onTap: () async {
+                          await trip.loadSavedTrip(saved.id);
+                          await _syncStopMarkers(trip.stops);
+                        },
+                        trailing: IconButton(
+                          icon: const Icon(Icons.delete_outline),
+                          onPressed: () => trip.deleteSavedTrip(saved.id),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ]
               else ...[
                 _NextStopCard(
                   stop: trip.nextStop ?? trip.stops.last,
@@ -859,6 +904,52 @@ class _PlanTripCard extends StatelessWidget {
               onPressed: onGoogleMaps,
               icon: const Icon(Icons.map_outlined),
               label: const Text('Navigate in Google Maps'),
+            ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              icon: const Icon(Icons.bookmark_add),
+              label: const Text('Save trip'),
+              onPressed: stops.isEmpty
+                  ? null
+                  : () async {
+                      final description = await showDialog<String>(
+                        context: context,
+                        builder: (dialogContext) {
+                          final controller = TextEditingController();
+
+                          return AlertDialog(
+                            title: const Text('Save this trip'),
+                            content: TextField(
+                              controller: controller,
+                              decoration: const InputDecoration(
+                                labelText: 'Description',
+                                hintText: 'For example: Home to office',
+                              ),
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(dialogContext),
+                                child: const Text('Cancel'),
+                              ),
+                              FilledButton(
+                                onPressed: () =>
+                                    Navigator.pop(dialogContext, controller.text),
+                                child: const Text('Save'),
+                              ),
+                            ],
+                          );
+                        },
+                      );
+
+                      if (description == null || !context.mounted) return;
+
+                      await context
+                          .read<NavigationProvider>()
+                          .saveCurrentTrip(description: description);
+                    },
             ),
           ),
         ],
