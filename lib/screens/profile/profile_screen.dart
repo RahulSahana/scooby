@@ -12,7 +12,7 @@ import '../../providers/theme_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/notification.dart';
 const String latestReleaseUrl =
-    'https://github.com/OWNER/REPOSITORY/releases/latest';
+    'https://github.com/RahulSahana/scooby/releases/download/v3.1.0/Scooby.3.1.apk';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -676,7 +676,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 onTap: () async {
                   final uri = Uri.parse(
-                    'https://github.com/OWNER/REPOSITORY/releases/latest',
+                    'https://github.com/RahulSahana/scooby/releases/download/v3.1.0/Scooby.3.1.apk',
                   );
 
                   final opened = await launchUrl(
