@@ -8,12 +8,13 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 
-
 import '../../providers/battery_provider.dart';
 import '../../providers/navigation_provider.dart';
 import '../../theme/app_colors.dart';
 import 'pandal_picker_sheet.dart';
 import '../../data/pandal_data.dart';
+
+enum _ReturnOrigin { lastStop, currentLocation }
 
 class NavigateScreen extends StatefulWidget {
   const NavigateScreen({super.key});
@@ -30,12 +31,19 @@ class _NavigateScreenState extends State<NavigateScreen> {
   Line? _routeLine;
   List<LatLng> _pendingRoutePoints = [];
   final List<Symbol> _stopSymbols = [];
-/// returning Home
+
+  /// returning Home
   double? _distanceToHomeKm;
+  _ReturnOrigin _returnOrigin = _ReturnOrigin.lastStop;
   DateTime? _lastHomeRouteRequestAt;
   Position? _lastHomeRouteOrigin;
-  bool _homeRouteRequestInProgress = false;
   int _homeRouteRequestToken = 0;
+  final TextEditingController _searchController = TextEditingController();
+  Timer? _searchDebounce;
+  int _searchRequestToken = 0;
+  List<ELocation> _searchResults = [];
+  ELocation? _selectedSearchLocation;
+  bool _searchInProgress = false;
 
   PandalStop? get _homeStop {
     for (final entry in pandalCatalog) {
@@ -44,12 +52,10 @@ class _NavigateScreenState extends State<NavigateScreen> {
     return null;
   }
 
-  Future<void> _updateHomeRoute(
-      Position origin, {
-        bool force = false,
-      }) async {
+  Future<void> _updateHomeRoute(Position origin, {bool force = false}) async {
+    if (_returnOrigin != _ReturnOrigin.currentLocation) return;
     final home = _homeStop;
-    if (home == null || _homeRouteRequestInProgress) return;
+    if (home == null) return;
 
     final now = DateTime.now();
 
@@ -69,18 +75,47 @@ class _NavigateScreenState extends State<NavigateScreen> {
       }
     }
 
-    _homeRouteRequestInProgress = true;
     _lastHomeRouteRequestAt = now;
     _lastHomeRouteOrigin = origin;
+    await _requestHomeRoute(
+      LatLng(origin.latitude, origin.longitude),
+      _ReturnOrigin.currentLocation,
+    );
+  }
+
+  Future<void> _updateLastStopHomeRoute() async {
+    final trip = context.read<NavigationProvider>();
+    if (trip.stops.isEmpty) {
+      if (mounted) setState(() => _distanceToHomeKm = null);
+      return;
+    }
+    final lastStop = trip.stops.last;
+    await _requestHomeRoute(
+      LatLng(lastStop.latitude, lastStop.longitude),
+      _ReturnOrigin.lastStop,
+    );
+  }
+
+  Future<void> _requestHomeRoute(
+    LatLng origin,
+    _ReturnOrigin requestedOrigin,
+  ) async {
+    final home = _homeStop;
+    if (home == null) return;
     final requestToken = ++_homeRouteRequestToken;
+    if (mounted) setState(() => _distanceToHomeKm = null);
 
     try {
       final response = await MapplsDirection(
-        origin: LatLng(origin.latitude, origin.longitude),
+        origin: origin,
         destination: LatLng(home.latitude, home.longitude),
       ).callDirection();
 
-      if (!mounted || requestToken != _homeRouteRequestToken) return;
+      if (!mounted ||
+          requestToken != _homeRouteRequestToken ||
+          requestedOrigin != _returnOrigin) {
+        return;
+      }
 
       final routes = response?.routes;
       if (routes == null || routes.isEmpty) return;
@@ -93,10 +128,172 @@ class _NavigateScreenState extends State<NavigateScreen> {
       });
     } catch (error) {
       debugPrint('Could not update route to Home: $error');
-    } finally {
-      if (requestToken == _homeRouteRequestToken) {
-        _homeRouteRequestInProgress = false;
+    }
+  }
+
+  Future<void> _selectReturnOrigin(_ReturnOrigin origin) async {
+    if (_returnOrigin == origin) return;
+    setState(() {
+      _returnOrigin = origin;
+      _distanceToHomeKm = null;
+    });
+
+    if (origin == _ReturnOrigin.lastStop) {
+      await _updateLastStopHomeRoute();
+      return;
+    }
+
+    final trip = context.read<NavigationProvider>();
+    final latitude = trip.currentLatitude;
+    final longitude = trip.currentLongitude;
+    if (latitude != null && longitude != null) {
+      _lastHomeRouteRequestAt = null;
+      await _requestHomeRoute(
+        LatLng(latitude, longitude),
+        _ReturnOrigin.currentLocation,
+      );
+      return;
+    }
+    try {
+      await _ensureLocationPermission();
+      final position = await Geolocator.getCurrentPosition();
+      if (!mounted || _returnOrigin != origin) return;
+      context.read<NavigationProvider>().updateCurrentLocation(
+        position.latitude,
+        position.longitude,
+      );
+      await _updateHomeRoute(position, force: true);
+    } catch (_) {
+      // The card keeps its unavailable state until a location fix is available.
+    }
+  }
+
+  Future<void> _ensureLocationPermission() async {
+    if (!await Geolocator.isLocationServiceEnabled()) {
+      throw StateError('Location services are disabled.');
+    }
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+    if (permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever) {
+      throw StateError('Location permission is unavailable.');
+    }
+  }
+
+  void _onSearchChanged(String query) {
+    _searchDebounce?.cancel();
+    final trimmed = query.trim();
+    if (trimmed.length < 2) {
+      setState(() {
+        _searchResults = [];
+        _searchInProgress = false;
+      });
+      return;
+    }
+    _searchDebounce = Timer(const Duration(milliseconds: 350), () {
+      unawaited(_searchPlaces(trimmed));
+    });
+  }
+
+  Future<void> _searchPlaces(String query) async {
+    final requestToken = ++_searchRequestToken;
+    setState(() => _searchInProgress = true);
+    final trip = context.read<NavigationProvider>();
+    try {
+      final response = await MapplsAutoSuggest(
+        query: query,
+        location: trip.currentLatitude != null && trip.currentLongitude != null
+            ? LatLng(trip.currentLatitude!, trip.currentLongitude!)
+            : const LatLng(22.5744, 88.3639),
+        hyperLocal: false,
+      ).callAutoSuggest();
+      if (!mounted || requestToken != _searchRequestToken) return;
+      setState(() {
+        _searchResults =
+            response?.suggestedLocations
+                ?.where(
+                  (place) => place.latitude != null && place.longitude != null,
+                )
+                .take(6)
+                .toList() ??
+            [];
+        _searchInProgress = false;
+      });
+    } catch (error) {
+      if (!mounted || requestToken != _searchRequestToken) return;
+      setState(() {
+        _searchResults = [];
+        _searchInProgress = false;
+      });
+      debugPrint('Mappls place search failed: $error');
+    }
+  }
+
+  Future<void> _selectSearchResult(ELocation place) async {
+    final controller = _mapController;
+    final latitude = place.latitude;
+    final longitude = place.longitude;
+    if (controller == null || latitude == null || longitude == null) return;
+    FocusScope.of(context).unfocus();
+    _searchController.text = place.placeName ?? place.placeAddress ?? '';
+    setState(() {
+      _selectedSearchLocation = place;
+      _searchResults = [];
+    });
+    await controller.animateCamera(
+      CameraUpdate.newLatLngZoom(LatLng(latitude, longitude), 15.5),
+    );
+  }
+
+  Future<void> _addSearchedPlaceToTrip() async {
+    final place = _selectedSearchLocation;
+    if (place?.latitude == null || place?.longitude == null) return;
+    final trip = context.read<NavigationProvider>();
+    if (trip.isNavigating) return;
+    if (trip.stops.length >= _maximumStopsForGoogleMaps) {
+      _showMessage(
+        'You have reached the maximum number of stops for this trip.',
+      );
+      return;
+    }
+    final stop = PandalStop(
+      id: 'mappls-${DateTime.now().microsecondsSinceEpoch}',
+      name: place!.placeName ?? place.placeAddress ?? 'Selected place',
+      latitude: place.latitude!,
+      longitude: place.longitude!,
+    );
+    trip.setStops([...trip.stops, stop]);
+    setState(() => _selectedSearchLocation = null);
+    await _syncStopMarkers(trip.stops);
+    if (_returnOrigin == _ReturnOrigin.lastStop) {
+      await _updateLastStopHomeRoute();
+    }
+  }
+
+  Future<void> _recenterMap() async {
+    try {
+      await _ensureLocationPermission();
+      final position = await Geolocator.getCurrentPosition();
+      if (!mounted) return;
+      context.read<NavigationProvider>().updateCurrentLocation(
+        position.latitude,
+        position.longitude,
+      );
+      await _mapController?.animateCamera(
+        CameraUpdate.newLatLngZoom(
+          LatLng(position.latitude, position.longitude),
+          15,
+        ),
+      );
+      if (_returnOrigin == _ReturnOrigin.currentLocation) {
+        await _updateHomeRoute(position, force: true);
       }
+    } catch (_) {
+      _showMessage(
+        'Could not get your location. Check GPS and location access.',
+      );
     }
   }
 
@@ -137,13 +334,15 @@ class _NavigateScreenState extends State<NavigateScreen> {
   @override
   void dispose() {
     _positionSubscription?.cancel();
+    _searchDebounce?.cancel();
+    _searchController.dispose();
     super.dispose();
   }
 
   Future<void> _requestAndDrawRoute(
-      Position origin,
-      NavigationProvider trip,
-      ) async {
+    Position origin,
+    NavigationProvider trip,
+  ) async {
     final stops = trip.stops
         .where((stop) => !trip.completedStopIds.contains(stop.id))
         .toList();
@@ -153,10 +352,7 @@ class _NavigateScreenState extends State<NavigateScreen> {
     try {
       final response = await MapplsDirection(
         origin: LatLng(origin.latitude, origin.longitude),
-        destination: LatLng(
-          stops.last.latitude,
-          stops.last.longitude,
-        ),
+        destination: LatLng(stops.last.latitude, stops.last.longitude),
         waypoint: stops
             .take(stops.length - 1)
             .map((stop) => LatLng(stop.latitude, stop.longitude))
@@ -176,9 +372,7 @@ class _NavigateScreenState extends State<NavigateScreen> {
 
       trip.updateRouteProgress(
         remainingDistanceKm: distance / 1000,
-        remainingDuration: Duration(
-          seconds: duration.round(),
-        ),
+        remainingDuration: Duration(seconds: duration.round()),
       );
 
       final geometry = route.geometry;
@@ -208,11 +402,7 @@ class _NavigateScreenState extends State<NavigateScreen> {
     }
 
     _routeLine = await controller.addLine(
-      LineOptions(
-        geometry: points,
-        lineColor: '#13BFA5',
-        lineWidth: 5,
-      ),
+      LineOptions(geometry: points, lineColor: '#13BFA5', lineWidth: 5),
     );
 
     final latitudes = points.map((point) => point.latitude).toList()..sort();
@@ -262,9 +452,7 @@ class _NavigateScreenState extends State<NavigateScreen> {
 
       longitude += (result & 1) != 0 ? ~(result >> 1) : (result >> 1);
 
-      points.add(
-        LatLng(latitude / 1000000, longitude / 1000000),
-      );
+      points.add(LatLng(latitude / 1000000, longitude / 1000000));
     }
 
     return points;
@@ -275,7 +463,9 @@ class _NavigateScreenState extends State<NavigateScreen> {
     final remainingSlots = _maximumStopsForGoogleMaps - trip.stops.length;
 
     if (remainingSlots <= 0) {
-      _showMessage('You have reached the maximum number of stops for this trip.');
+      _showMessage(
+        'You have reached the maximum number of stops for this trip.',
+      );
       return;
     }
 
@@ -294,15 +484,22 @@ class _NavigateScreenState extends State<NavigateScreen> {
     final updatedStops = [...trip.stops, ...selectedStops];
     trip.setStops(updatedStops);
     await _syncStopMarkers(updatedStops);
+    if (_returnOrigin == _ReturnOrigin.lastStop) {
+      await _updateLastStopHomeRoute();
+    }
   }
 
   void _removeStop(PandalStop stop) {
     final trip = context.read<NavigationProvider>();
-    final updatedStops =
-        trip.stops.where((item) => item.id != stop.id).toList();
+    final updatedStops = trip.stops
+        .where((item) => item.id != stop.id)
+        .toList();
 
     trip.setStops(updatedStops);
     unawaited(_syncStopMarkers(updatedStops));
+    if (_returnOrigin == _ReturnOrigin.lastStop) {
+      unawaited(_updateLastStopHomeRoute());
+    }
   }
 
   Future<void> _startNavigation() async {
@@ -344,7 +541,10 @@ class _NavigateScreenState extends State<NavigateScreen> {
       trip.startNavigation();
       await Future.wait([
         _requestAndDrawRoute(position, trip),
-        _updateHomeRoute(position, force: true),
+        if (_returnOrigin == _ReturnOrigin.currentLocation)
+          _updateHomeRoute(position, force: true)
+        else
+          _updateLastStopHomeRoute(),
       ]);
 
       await _positionSubscription?.cancel();
@@ -370,7 +570,9 @@ class _NavigateScreenState extends State<NavigateScreen> {
     // Ignore inaccurate GPS fixes for arrival detection.
     if (position.accuracy > 35) return;
 
-    unawaited(_updateHomeRoute(position));
+    if (_returnOrigin == _ReturnOrigin.currentLocation) {
+      unawaited(_updateHomeRoute(position));
+    }
 
     final nextStop = trip.nextStop;
     if (nextStop == null) return;
@@ -424,21 +626,14 @@ class _NavigateScreenState extends State<NavigateScreen> {
         .map((stop) => '${stop.latitude},${stop.longitude}')
         .join('|');
 
-    final uri = Uri.https(
-      'www.google.com',
-      '/maps/dir/',
-      {
-        'api': '1',
-        'destination': '${destination.latitude},${destination.longitude}',
-        'travelmode': 'driving',
-        if (waypoints.isNotEmpty) 'waypoints': waypoints,
-      },
-    );
+    final uri = Uri.https('www.google.com', '/maps/dir/', {
+      'api': '1',
+      'destination': '${destination.latitude},${destination.longitude}',
+      'travelmode': 'driving',
+      if (waypoints.isNotEmpty) 'waypoints': waypoints,
+    });
 
-    final opened = await launchUrl(
-      uri,
-      mode: LaunchMode.externalApplication,
-    );
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
 
     if (!opened) {
       _showMessage('Could not open Google Maps.');
@@ -489,9 +684,9 @@ class _NavigateScreenState extends State<NavigateScreen> {
   void _showMessage(String message) {
     if (!mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   double? _calculateRemainingDistanceKm(NavigationProvider trip) {
@@ -568,8 +763,8 @@ class _NavigateScreenState extends State<NavigateScreen> {
     final eta = trip.isNavigating
         ? _formatEta(trip.remainingDuration)
         : (remainingKm == null
-            ? '--'
-            : _estimatedCompletionTime(remainingKm, stopsLeft));
+              ? '--'
+              : _estimatedCompletionTime(remainingKm, stopsLeft));
 
     return Scaffold(
       backgroundColor: appColors.background,
@@ -588,6 +783,19 @@ class _NavigateScreenState extends State<NavigateScreen> {
               const SizedBox(height: 14),
 
               _MapPreview(
+                searchController: _searchController,
+                searchResults: _searchResults,
+                searchInProgress: _searchInProgress,
+                selectedSearchLocation: _selectedSearchLocation,
+                canAddSearchResult: !trip.isNavigating,
+                onSearchChanged: _onSearchChanged,
+                onSearchResultSelected: _selectSearchResult,
+                onAddSearchResult: _addSearchedPlaceToTrip,
+                onRecenter: _recenterMap,
+                onZoomIn: () =>
+                    _mapController?.animateCamera(CameraUpdate.zoomIn()),
+                onZoomOut: () =>
+                    _mapController?.animateCamera(CameraUpdate.zoomOut()),
                 onMapCreated: (controller) {
                   _mapController = controller;
                 },
@@ -611,7 +819,9 @@ class _NavigateScreenState extends State<NavigateScreen> {
                   onAddStop: _addStop,
                   onRemoveStop: _removeStop,
                   onNavigate: trip.stops.isEmpty ? null : _startNavigation,
-                  onGoogleMaps: trip.stops.isEmpty ? null : () => _openGoogleMaps(trip),
+                  onGoogleMaps: trip.stops.isEmpty
+                      ? null
+                      : () => _openGoogleMaps(trip),
                 ),
                 if (trip.savedTrips.isNotEmpty) ...[
                   const SizedBox(height: 16),
@@ -657,8 +867,7 @@ class _NavigateScreenState extends State<NavigateScreen> {
                     ),
                   ),
                 ],
-              ]
-              else ...[
+              ] else ...[
                 _NextStopCard(
                   stop: trip.nextStop ?? trip.stops.last,
                   cardColor: appColors.cardColor,
@@ -679,6 +888,8 @@ class _NavigateScreenState extends State<NavigateScreen> {
                   eta: eta,
                   accent: colors.primary,
                   distanceToHomeKm: _distanceToHomeKm,
+                  returnOrigin: _returnOrigin,
+                  onReturnOriginChanged: _selectReturnOrigin,
                 ),
 
                 const SizedBox(height: 10),
@@ -756,8 +967,7 @@ class _NavigateHeader extends StatelessWidget {
                 ),
               ),
             ),
-            if (isNavigating)
-              _Pill(text: 'NAVIGATING', color: accent),
+            if (isNavigating) _Pill(text: 'NAVIGATING', color: accent),
           ],
         ),
         const SizedBox(height: 2),
@@ -780,36 +990,235 @@ class _NavigateHeader extends StatelessWidget {
 
 class _MapPreview extends StatelessWidget {
   const _MapPreview({
+    required this.searchController,
+    required this.searchResults,
+    required this.searchInProgress,
+    required this.selectedSearchLocation,
+    required this.canAddSearchResult,
+    required this.onSearchChanged,
+    required this.onSearchResultSelected,
+    required this.onAddSearchResult,
+    required this.onRecenter,
+    required this.onZoomIn,
+    required this.onZoomOut,
     required this.onMapCreated,
     required this.onStyleLoaded,
   });
 
+  final TextEditingController searchController;
+  final List<ELocation> searchResults;
+  final bool searchInProgress;
+  final ELocation? selectedSearchLocation;
+  final bool canAddSearchResult;
+  final ValueChanged<String> onSearchChanged;
+  final ValueChanged<ELocation> onSearchResultSelected;
+  final VoidCallback onAddSearchResult;
+  final VoidCallback onRecenter;
+  final VoidCallback onZoomIn;
+  final VoidCallback onZoomOut;
   final void Function(MapplsMapController) onMapCreated;
   final VoidCallback onStyleLoaded;
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textColor = Theme.of(context).colorScheme.onSurface;
+    final muted = textColor.withValues(alpha: 0.62);
     return ClipRRect(
       borderRadius: BorderRadius.circular(20),
       child: SizedBox(
-        height: 400,
-        child: MapplsMap(
-          initialCameraPosition: CameraPosition(
-            target: LatLng(22.5744, 88.3639),
-            zoom: 12,
-          ),
-          myLocationEnabled: true,
-          onMapCreated: onMapCreated,
-          onStyleLoadedCallback: onStyleLoaded,
-          gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
-            Factory<OneSequenceGestureRecognizer>(
-                  () => EagerGestureRecognizer(),
+        height: 500,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: MapplsMap(
+                initialCameraPosition: CameraPosition(
+                  target: LatLng(22.5744, 88.3639),
+                  zoom: 12,
+                ),
+                myLocationEnabled: true,
+                onMapCreated: onMapCreated,
+                onStyleLoadedCallback: onStyleLoaded,
+                gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
+                  Factory<OneSequenceGestureRecognizer>(
+                    () => EagerGestureRecognizer(),
+                  ),
+                },
+              ),
             ),
-          },
+            Positioned(
+              top: 12,
+              left: 12,
+              right: 12,
+              child: Material(
+                elevation: 6,
+                shadowColor: Colors.black26,
+                borderRadius: BorderRadius.circular(16),
+                color: Theme.of(context).cardColor,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: searchController,
+                      onChanged: onSearchChanged,
+                      textInputAction: TextInputAction.search,
+                      decoration: InputDecoration(
+                        hintText: 'Search places, pandals, or addresses',
+                        prefixIcon: const Icon(Icons.search),
+                        suffixIcon: searchInProgress
+                            ? const Padding(
+                                padding: EdgeInsets.all(14),
+                                child: SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                ),
+                              )
+                            : (searchController.text.isNotEmpty
+                                  ? IconButton(
+                                      tooltip: 'Clear search',
+                                      onPressed: () {
+                                        searchController.clear();
+                                        onSearchChanged('');
+                                      },
+                                      icon: const Icon(Icons.close),
+                                    )
+                                  : null),
+                        border: InputBorder.none,
+                        contentPadding: const EdgeInsets.symmetric(
+                          vertical: 16,
+                        ),
+                      ),
+                    ),
+                    if (searchResults.isNotEmpty) const Divider(height: 1),
+                    if (searchResults.isNotEmpty)
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxHeight: 250),
+                        child: ListView.separated(
+                          shrinkWrap: true,
+                          padding: EdgeInsets.zero,
+                          itemCount: searchResults.length,
+                          separatorBuilder: (context, index) =>
+                              const Divider(height: 1),
+                          itemBuilder: (context, index) {
+                            final place = searchResults[index];
+                            return ListTile(
+                              dense: true,
+                              leading: Icon(
+                                Icons.location_on_outlined,
+                                color: colors.primary,
+                              ),
+                              title: Text(
+                                place.placeName ??
+                                    place.placeAddress ??
+                                    'Place',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              subtitle:
+                                  place.placeName != null &&
+                                      place.placeAddress != null
+                                  ? Text(
+                                      place.placeAddress!,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(color: muted),
+                                    )
+                                  : null,
+                              onTap: () => onSearchResultSelected(place),
+                            );
+                          },
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            Positioned(
+              right: 12,
+              top: 100,
+              child: Column(
+                children: [
+                  _MapControlButton(
+                    icon: Icons.my_location,
+                    tooltip: 'My location',
+                    onPressed: onRecenter,
+                  ),
+                  const SizedBox(height: 8),
+                  _MapControlButton(
+                    icon: Icons.add,
+                    tooltip: 'Zoom in',
+                    onPressed: onZoomIn,
+                  ),
+                  const SizedBox(height: 6),
+                  _MapControlButton(
+                    icon: Icons.remove,
+                    tooltip: 'Zoom out',
+                    onPressed: onZoomOut,
+                  ),
+                ],
+              ),
+            ),
+            if (selectedSearchLocation != null)
+              Positioned(
+                left: 12,
+                right: 68,
+                bottom: 12,
+                child: Material(
+                  elevation: 5,
+                  borderRadius: BorderRadius.circular(14),
+                  color: Theme.of(context).cardColor,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            selectedSearchLocation!.placeName ??
+                                selectedSearchLocation!.placeAddress ??
+                                'Selected place',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                        if (canAddSearchResult)
+                          TextButton(
+                            onPressed: onAddSearchResult,
+                            child: const Text('Add stop'),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );
   }
+}
+
+class _MapControlButton extends StatelessWidget {
+  const _MapControlButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) => Material(
+    elevation: 5,
+    shape: const CircleBorder(),
+    color: Theme.of(context).cardColor,
+    child: IconButton(tooltip: tooltip, onPressed: onPressed, icon: Icon(icon)),
+  );
 }
 
 class _PlanTripCard extends StatelessWidget {
@@ -858,7 +1267,7 @@ class _PlanTripCard extends StatelessWidget {
           if (stops.isNotEmpty) ...[
             const SizedBox(height: 8),
             ...stops.asMap().entries.map(
-                  (entry) => ListTile(
+              (entry) => ListTile(
                 dense: true,
                 contentPadding: EdgeInsets.zero,
                 leading: CircleAvatar(
@@ -935,8 +1344,10 @@ class _PlanTripCard extends StatelessWidget {
                                 child: const Text('Cancel'),
                               ),
                               FilledButton(
-                                onPressed: () =>
-                                    Navigator.pop(dialogContext, controller.text),
+                                onPressed: () => Navigator.pop(
+                                  dialogContext,
+                                  controller.text,
+                                ),
                                 child: const Text('Save'),
                               ),
                             ],
@@ -946,9 +1357,9 @@ class _PlanTripCard extends StatelessWidget {
 
                       if (description == null || !context.mounted) return;
 
-                      await context
-                          .read<NavigationProvider>()
-                          .saveCurrentTrip(description: description);
+                      await context.read<NavigationProvider>().saveCurrentTrip(
+                        description: description,
+                      );
                     },
             ),
           ),
@@ -1015,7 +1426,6 @@ class _NextStopCard extends StatelessWidget {
   }
 }
 
-
 class _TripSummaryCard extends StatelessWidget {
   const _TripSummaryCard({
     required this.cardColor,
@@ -1027,6 +1437,8 @@ class _TripSummaryCard extends StatelessWidget {
     required this.eta,
     required this.accent,
     required this.distanceToHomeKm,
+    required this.returnOrigin,
+    required this.onReturnOriginChanged,
   });
 
   final Color cardColor;
@@ -1040,6 +1452,8 @@ class _TripSummaryCard extends StatelessWidget {
 
   // Distance from the current location to home.
   final double? distanceToHomeKm;
+  final _ReturnOrigin returnOrigin;
+  final ValueChanged<_ReturnOrigin> onReturnOriginChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -1051,8 +1465,7 @@ class _TripSummaryCard extends StatelessWidget {
         ? 'Locating…'
         : '${distanceToHomeKm!.toStringAsFixed(1)} km';
 
-    final distancesAvailable =
-        remainingKm != null && distanceToHomeKm != null;
+    final distancesAvailable = remainingKm != null && distanceToHomeKm != null;
 
     // Remaining route + return journey.
     final totalRequiredKm = distancesAvailable
@@ -1060,33 +1473,27 @@ class _TripSummaryCard extends StatelessWidget {
         : 0.0;
 
     // Can the scooter complete the route and return home?
-    final tripPossible = distancesAvailable &&
-        batteryRangeKm >= totalRequiredKm;
+    final tripPossible =
+        distancesAvailable && batteryRangeKm >= totalRequiredKm;
 
     // Can the scooter reach home from its current location?
-    final returnPossible = distanceToHomeKm != null &&
-        batteryRangeKm >= distanceToHomeKm!;
+    final returnPossible =
+        distanceToHomeKm != null && batteryRangeKm >= distanceToHomeKm!;
 
     // Target a 20% distance reserve.
-    final tripHasReserve = distancesAvailable &&
-        batteryRangeKm >= totalRequiredKm * 1.2;
+    final tripHasReserve =
+        distancesAvailable && batteryRangeKm >= totalRequiredKm * 1.2;
 
-    final homeHasReserve = distanceToHomeKm != null &&
-        batteryRangeKm >= distanceToHomeKm! * 1.2;
+    final homeHasReserve =
+        distanceToHomeKm != null && batteryRangeKm >= distanceToHomeKm! * 1.2;
 
-    final tripCoverage = !distancesAvailable ||
-        totalRequiredKm <= 0
+    final tripCoverage = !distancesAvailable || totalRequiredKm <= 0
         ? 0.0
-        : (batteryRangeKm / totalRequiredKm)
-        .clamp(0.0, 1.0)
-        .toDouble();
+        : (batteryRangeKm / totalRequiredKm).clamp(0.0, 1.0).toDouble();
 
-    final homeCoverage = distanceToHomeKm == null ||
-        distanceToHomeKm! <= 0
+    final homeCoverage = distanceToHomeKm == null || distanceToHomeKm! <= 0
         ? 0.0
-        : (batteryRangeKm / distanceToHomeKm!)
-        .clamp(0.0, 1.0)
-        .toDouble();
+        : (batteryRangeKm / distanceToHomeKm!).clamp(0.0, 1.0).toDouble();
 
     final rangeColor = !distancesAvailable
         ? mutedColor
@@ -1153,9 +1560,7 @@ class _TripSummaryCard extends StatelessWidget {
                         ? mutedColor
                         : tripPossible
                         ? accent
-                        : Theme.of(context)
-                        .colorScheme
-                        .error,
+                        : Theme.of(context).colorScheme.error,
                   ),
                 ],
               ),
@@ -1212,10 +1617,8 @@ class _TripSummaryCard extends StatelessWidget {
                 child: LinearProgressIndicator(
                   value: tripCoverage,
                   minHeight: 8,
-                  backgroundColor:
-                  rangeColor.withValues(alpha: 0.16),
-                  valueColor:
-                  AlwaysStoppedAnimation<Color>(rangeColor),
+                  backgroundColor: rangeColor.withValues(alpha: 0.16),
+                  valueColor: AlwaysStoppedAnimation<Color>(rangeColor),
                 ),
               ),
 
@@ -1224,24 +1627,18 @@ class _TripSummaryCard extends StatelessWidget {
               Text(
                 distancesAvailable
                     ? '${batteryRangeKm.toStringAsFixed(1)} km range · '
-                    '${totalRequiredKm.toStringAsFixed(1)} km '
-                    'required including return'
+                          '${totalRequiredKm.toStringAsFixed(1)} km '
+                          'required including return'
                     : '${batteryRangeKm.toStringAsFixed(1)} km '
-                    'estimated range · Waiting for location',
-                style: TextStyle(
-                  color: mutedColor,
-                  fontSize: 12,
-                ),
+                          'estimated range · Waiting for location',
+                style: TextStyle(color: mutedColor, fontSize: 12),
               ),
 
               const SizedBox(height: 8),
 
               Text(
                 '$stopsLeft stops remaining',
-                style: TextStyle(
-                  color: mutedColor,
-                  fontSize: 12,
-                ),
+                style: TextStyle(color: mutedColor, fontSize: 12),
               ),
             ],
           ),
@@ -1257,11 +1654,7 @@ class _TripSummaryCard extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  Icon(
-                    Icons.home_rounded,
-                    color: accent,
-                    size: 22,
-                  ),
+                  Icon(Icons.home_rounded, color: accent, size: 22),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -1273,20 +1666,51 @@ class _TripSummaryCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  _Pill(
-                    text: homeRangeStatus,
-                    color: homeRangeColor,
-                  ),
+                  _Pill(text: homeRangeStatus, color: homeRangeColor),
                 ],
               ),
 
               const SizedBox(height: 14),
 
+              Text(
+                'RETURN FROM',
+                style: TextStyle(
+                  color: mutedColor,
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.7,
+                ),
+              ),
+              const SizedBox(height: 6),
+              SizedBox(
+                width: double.infinity,
+                child: SegmentedButton<_ReturnOrigin>(
+                  segments: const [
+                    ButtonSegment(
+                      value: _ReturnOrigin.lastStop,
+                      label: Text('Last Stop'),
+                      icon: Icon(Icons.flag_outlined),
+                    ),
+                    ButtonSegment(
+                      value: _ReturnOrigin.currentLocation,
+                      label: Text('Current Location'),
+                      icon: Icon(Icons.my_location),
+                    ),
+                  ],
+                  selected: {returnOrigin},
+                  onSelectionChanged: (selected) =>
+                      onReturnOriginChanged(selected.first),
+                ),
+              ),
+              const SizedBox(height: 12),
+
               Row(
                 children: [
                   Expanded(
                     child: _Metric(
-                      label: 'DISTANCE TO HOME',
+                      label: returnOrigin == _ReturnOrigin.lastStop
+                          ? 'LAST STOP TO HOME'
+                          : 'CURRENT LOCATION TO HOME',
                       value: homeDistanceText,
                       textColor: textColor,
                       mutedColor: mutedColor,
@@ -1296,8 +1720,7 @@ class _TripSummaryCard extends StatelessWidget {
                   Expanded(
                     child: _Metric(
                       label: 'AVAILABLE RANGE',
-                      value:
-                      '${batteryRangeKm.toStringAsFixed(1)} km',
+                      value: '${batteryRangeKm.toStringAsFixed(1)} km',
                       textColor: textColor,
                       mutedColor: mutedColor,
                     ),
@@ -1312,12 +1735,8 @@ class _TripSummaryCard extends StatelessWidget {
                 child: LinearProgressIndicator(
                   value: homeCoverage,
                   minHeight: 8,
-                  backgroundColor:
-                  homeRangeColor.withValues(alpha: 0.16),
-                  valueColor:
-                  AlwaysStoppedAnimation<Color>(
-                    homeRangeColor,
-                  ),
+                  backgroundColor: homeRangeColor.withValues(alpha: 0.16),
+                  valueColor: AlwaysStoppedAnimation<Color>(homeRangeColor),
                 ),
               ),
 
@@ -1325,27 +1744,26 @@ class _TripSummaryCard extends StatelessWidget {
 
               Text(
                 distanceToHomeKm == null
-                    ? 'Waiting for your current location '
-                    'and home route distance.'
+                    ? returnOrigin == _ReturnOrigin.lastStop
+                          ? 'Waiting for a planned last stop and its route home.'
+                          : 'Waiting for your current location and home route distance.'
                     : !returnPossible
                     ? 'WARNING: Your estimated battery range '
-                    'is insufficient to reach home. '
-                    'Avoid extending the trip and seek '
-                    'a safe charging point or assistance.'
+                          'is insufficient to reach home. '
+                          'Avoid extending the trip and seek '
+                          'a safe charging point or assistance.'
                     : !homeHasReserve
                     ? 'CAUTION: You may reach home, but '
-                    'the estimated 20% distance '
-                    'reserve is not available.'
+                          'the estimated 20% distance '
+                          'reserve is not available.'
                     : 'Your estimated battery range is '
-                    'sufficient to return home with '
-                    'a 20% distance reserve.',
+                          'sufficient to return home with '
+                          'a 20% distance reserve.',
                 style: TextStyle(
                   color: distanceToHomeKm == null
                       ? mutedColor
                       : !returnPossible
-                      ? Theme.of(context)
-                      .colorScheme
-                      .error
+                      ? Theme.of(context).colorScheme.error
                       : !homeHasReserve
                       ? Colors.amber
                       : textColor,
@@ -1358,12 +1776,8 @@ class _TripSummaryCard extends StatelessWidget {
 
               Text(
                 'Actual range may vary with speed, traffic, '
-                    'terrain, temperature and battery condition.',
-                style: TextStyle(
-                  color: mutedColor,
-                  fontSize: 11,
-                  height: 1.4,
-                ),
+                'terrain, temperature and battery condition.',
+                style: TextStyle(color: mutedColor, fontSize: 11, height: 1.4),
               ),
             ],
           ),
@@ -1372,7 +1786,6 @@ class _TripSummaryCard extends StatelessWidget {
     );
   }
 }
-
 
 class _StopsChecklistCard extends StatelessWidget {
   const _StopsChecklistCard({
@@ -1395,8 +1808,9 @@ class _StopsChecklistCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final completedCount =
-        stops.where((stop) => completedStopIds.contains(stop.id)).length;
+    final completedCount = stops
+        .where((stop) => completedStopIds.contains(stop.id))
+        .length;
 
     return _Card(
       color: cardColor,
@@ -1427,8 +1841,7 @@ class _StopsChecklistCard extends StatelessWidget {
                 style: TextStyle(
                   color: isCompleted ? mutedColor : textColor,
                   fontSize: 14,
-                  decoration:
-                  isCompleted ? TextDecoration.lineThrough : null,
+                  decoration: isCompleted ? TextDecoration.lineThrough : null,
                 ),
               ),
               subtitle: Text(

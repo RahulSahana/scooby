@@ -82,16 +82,29 @@ class Scooby extends StatelessWidget {
       theme: _buildTheme(AppColors.light, Brightness.light),
       darkTheme: _buildTheme(AppColors.dark, Brightness.dark),
       themeMode: themeProvider.themeMode,
-      home: const AnnotatedRegion<SystemUiOverlayStyle>(
-        value: SystemUiOverlayStyle(
-          statusBarIconBrightness: Brightness.dark,
-          statusBarBrightness: Brightness.light,
-        ),
-        child: ConnectScreen(),
-        //child: NavigateScreen(),
-        //child: HomeScreen(),
-        //child: ProfileScreen(),
-      ),
+      builder: (context, child) {
+        final isDarkTheme = Theme.of(context).brightness == Brightness.dark;
+        return AnnotatedRegion<SystemUiOverlayStyle>(
+          value: SystemUiOverlayStyle(
+            statusBarColor: Colors.transparent,
+            statusBarIconBrightness: isDarkTheme
+                ? Brightness.light
+                : Brightness.dark,
+            statusBarBrightness: isDarkTheme
+                ? Brightness.dark
+                : Brightness.light,
+            systemNavigationBarColor: Colors.transparent,
+            systemNavigationBarIconBrightness: isDarkTheme
+                ? Brightness.light
+                : Brightness.dark,
+          ),
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
+      //child: ConnectScreen(),
+      home: NavigateScreen(),
+      //child: HomeScreen(),
+      //child: ProfileScreen(),
     );
   }
 }
@@ -141,21 +154,24 @@ class _MyHomePageState extends State<MyHomePage> {
 
   @override
   Widget build(BuildContext context) {
-    // Dynamic Status Bar Brightness based on screen (Charge/Profile are Dark)
-    final isDarkScreen = _selectedIndex == 1 || _selectedIndex == 2;
+    final isDarkTheme = Theme.of(context).brightness == Brightness.dark;
+    final systemUiStyle = SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: isDarkTheme ? Brightness.light : Brightness.dark,
+      statusBarBrightness: isDarkTheme ? Brightness.dark : Brightness.light,
+      systemNavigationBarColor: Colors.transparent,
+      systemNavigationBarIconBrightness: isDarkTheme
+          ? Brightness.light
+          : Brightness.dark,
+    );
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: isDarkScreen ? Brightness.light : Brightness.dark,
-        statusBarBrightness: isDarkScreen ? Brightness.dark : Brightness.light,
-        systemNavigationBarIconBrightness: isDarkScreen ? Brightness.light : Brightness.dark,
-      ),
+      value: systemUiStyle,
       child: Scaffold(
         appBar: AppBar(
           backgroundColor: Colors.transparent,
           elevation: 0,
-          systemOverlayStyle: SystemUiOverlayStyle.dark,
+          systemOverlayStyle: systemUiStyle,
           titleSpacing: 16,
           title: const Text(
             'Scooby',
