@@ -1,4 +1,4 @@
-import { ensureSchema, publishLatest } from '../lib/telemetry-store.mjs';
+import { publishLatest } from '../lib/telemetry-store.mjs';
 
 function json(body, status = 200) {
   return Response.json(body, {
@@ -90,7 +90,6 @@ export async function POST(request) {
   };
 
   try {
-    await ensureSchema();
     const accepted = await publishLatest({
       deviceId: body.deviceId,
       accessToken,

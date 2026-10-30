@@ -1,32 +1,18 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
-import { neon } from '@neondatabase/serverless';
+import { Redis } from '@upstash/redis';
 
-let sqlClient;
-let schemaReady;
+let redisClient;
 
-function getSql() {
-  const connectionString = process.env.DATABASE_URL;
-  if (!connectionString) {
-    throw new Error('DATABASE_URL is not configured.');
+function getRedis() {
+  if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
+    throw new Error('Upstash Redis environment variables are not configured.');
   }
-  sqlClient ??= neon(connectionString);
-  return sqlClient;
+  redisClient ??= Redis.fromEnv();
+  return redisClient;
 }
 
-export async function ensureSchema() {
-  if (!schemaReady) {
-    schemaReady = getSql()`
-      CREATE TABLE IF NOT EXISTS scooby_latest_telemetry (
-        device_id TEXT PRIMARY KEY,
-        access_token_hash CHAR(64) NOT NULL,
-        publisher_id TEXT NOT NULL,
-        payload JSONB NOT NULL,
-        observed_at TIMESTAMPTZ NOT NULL,
-        received_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      )
-    `;
-  }
-  await schemaReady;
+function keyFor(deviceId) {
+  return `scooby:latest:${deviceId}`;
 }
 
 function hashAccessToken(token) {
@@ -40,6 +26,18 @@ function tokenMatches(storedHash, suppliedHash) {
   return stored.length === supplied.length && timingSafeEqual(stored, supplied);
 }
 
+async function getRecord(redis, key) {
+  const value = await redis.get(key);
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return null;
+    }
+  }
+  return value && typeof value === 'object' ? value : null;
+}
+
 export async function publishLatest({
   deviceId,
   accessToken,
@@ -47,75 +45,36 @@ export async function publishLatest({
   payload,
   observedAt,
 }) {
-  const sql = getSql();
+  const redis = getRedis();
+  const key = keyFor(deviceId);
   const accessTokenHash = hashAccessToken(accessToken);
+  const record = {
+    accessTokenHash,
+    deviceId,
+    publisherId,
+    payload,
+    observedAt,
+    receivedAt: new Date().toISOString(),
+  };
 
-  await sql`
-    INSERT INTO scooby_latest_telemetry (
-      device_id,
-      access_token_hash,
-      publisher_id,
-      payload,
-      observed_at,
-      received_at
-    )
-    VALUES (
-      ${deviceId},
-      ${accessTokenHash},
-      ${publisherId},
-      ${JSON.stringify(payload)}::jsonb,
-      ${observedAt},
-      NOW()
-    )
-    ON CONFLICT (device_id) DO NOTHING
-  `;
+  let existing = await getRecord(redis, key);
+  if (!existing) {
+    const created = await redis.set(key, record, { nx: true });
+    if (created === 'OK') return true;
+    existing = await getRecord(redis, key);
+  }
 
-  const updatedRows = await sql`
-    UPDATE scooby_latest_telemetry
-    SET publisher_id = ${publisherId},
-        payload = ${JSON.stringify(payload)}::jsonb,
-        observed_at = ${observedAt},
-        received_at = NOW()
-    WHERE device_id = ${deviceId}
-      AND access_token_hash = ${accessTokenHash}
-    RETURNING device_id
-  `;
-
-  if (updatedRows.length > 0) return true;
-
-  const existing = await sql`
-    SELECT access_token_hash
-    FROM scooby_latest_telemetry
-    WHERE device_id = ${deviceId}
-    LIMIT 1
-  `;
-
-  // No row indicates a concurrent first registration. A later retry can claim it.
-  if (existing.length === 0) return false;
-  return tokenMatches(existing[0].access_token_hash, accessTokenHash);
+  if (!existing || !tokenMatches(existing.accessTokenHash, accessTokenHash)) return false;
+  await redis.set(key, record);
+  return true;
 }
 
 export async function readLatest({ deviceId, accessToken }) {
-  const sql = getSql();
+  const redis = getRedis();
+  const record = await getRecord(redis, keyFor(deviceId));
   const suppliedHash = hashAccessToken(accessToken);
-  const rows = await sql`
-    SELECT device_id, access_token_hash, publisher_id, payload,
-           observed_at, received_at
-    FROM scooby_latest_telemetry
-    WHERE device_id = ${deviceId}
-    LIMIT 1
-  `;
+  if (!record || !tokenMatches(record.accessTokenHash, suppliedHash)) return null;
 
-  if (rows.length === 0 || !tokenMatches(rows[0].access_token_hash, suppliedHash)) {
-    return null;
-  }
-
-  const row = rows[0];
-  return {
-    deviceId: row.device_id,
-    publisherId: row.publisher_id,
-    payload: row.payload,
-    observedAt: new Date(row.observed_at).toISOString(),
-    receivedAt: new Date(row.received_at).toISOString(),
-  };
+  const { accessTokenHash: _accessTokenHash, ...publicRecord } = record;
+  return publicRecord;
 }

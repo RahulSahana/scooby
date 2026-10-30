@@ -1,4 +1,4 @@
-import { ensureSchema, readLatest } from '../lib/telemetry-store.mjs';
+import { readLatest } from '../lib/telemetry-store.mjs';
 
 function json(body, status = 200) {
   return Response.json(body, {
@@ -24,7 +24,6 @@ export async function GET(request) {
   if (!accessToken) return json({ error: 'A valid Scooby pairing token is required.' }, 401);
 
   try {
-    await ensureSchema();
     const reading = await readLatest({ deviceId, accessToken });
     if (!reading) return json({ error: 'Scooter was not found or is not shared with this phone.' }, 404);
     return json(reading);
