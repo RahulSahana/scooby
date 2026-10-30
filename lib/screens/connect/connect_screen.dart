@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 
 import '../../main.dart';
 import '../../providers/battery_provider.dart';
+import '../../widgets/app_update_banner.dart';
 
 class ConnectScreen extends StatefulWidget {
   const ConnectScreen({super.key});
@@ -265,9 +266,16 @@ class _ConnectScreenState extends State<ConnectScreen>
               ),
           ],
         ),
-        body: isConnecting || (isScanning && devices.isEmpty)
-            ? _buildCinematicConnectingView()
-            : (devices.isEmpty ? _buildEmptyState() : _buildDeviceList()),
+        body: Column(
+          children: [
+            const AppUpdateBanner(),
+            Expanded(
+              child: isConnecting || (isScanning && devices.isEmpty)
+                  ? _buildCinematicConnectingView()
+                  : (devices.isEmpty ? _buildEmptyState() : _buildDeviceList()),
+            ),
+          ],
+        ),
       ),
     );
   }

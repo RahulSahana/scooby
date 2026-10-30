@@ -13,7 +13,7 @@ import 'screens/home/home_screen.dart';
 import 'screens/profile/profile_screen.dart';
 import 'widgets/connection_badge.dart';
 import 'screens/navigate/navigate_screen.dart';
-
+import 'widgets/app_update_banner.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -30,18 +30,14 @@ void main() async {
   //   ),
   // );
 
-  SystemChrome.setEnabledSystemUIMode(
-    SystemUiMode.edgeToEdge,
-  );
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
   runApp(
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => BatteryProvider()),
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
-        ChangeNotifierProvider(
-          create: (_) => NavigationProvider(),
-        ),
+        ChangeNotifierProvider(create: (_) => NavigationProvider()),
       ],
       child: const Scooby(),
     ),
@@ -49,17 +45,18 @@ void main() async {
 }
 
 ThemeData _buildTheme(AppColors colors, Brightness brightness) {
-  final colorScheme = ColorScheme.fromSeed(
-    seedColor: colors.primary,
-    brightness: brightness,
-  ).copyWith(
-    primary: colors.primary,
-    secondary: colors.secondary,
-    error: colors.criticalRed,
-    surface: colors.cardColor,
-    onSurface: colors.primaryText,
-    outline: colors.cardBorder,
-  );
+  final colorScheme =
+      ColorScheme.fromSeed(
+        seedColor: colors.primary,
+        brightness: brightness,
+      ).copyWith(
+        primary: colors.primary,
+        secondary: colors.secondary,
+        error: colors.criticalRed,
+        surface: colors.cardColor,
+        onSurface: colors.primaryText,
+        outline: colors.cardBorder,
+      );
 
   return ThemeData(
     brightness: brightness,
@@ -101,10 +98,10 @@ class Scooby extends StatelessWidget {
           child: child ?? const SizedBox.shrink(),
         );
       },
-      //child: ConnectScreen(),
-      home: NavigateScreen(),
-      //child: HomeScreen(),
-      //child: ProfileScreen(),
+      home: ConnectScreen(),
+      //home: NavigateScreen(),
+      //home: HomeScreen(),
+      //home: ProfileScreen(),
     );
   }
 }
@@ -199,11 +196,18 @@ class _MyHomePageState extends State<MyHomePage> {
             ),
           ],
         ),
-        body: PageView(
-          controller: _pageController,
-          onPageChanged: _onPageChanged,
-          physics: const BouncingScrollPhysics(),
-          children: _screens,
+        body: Column(
+          children: [
+            const AppUpdateBanner(),
+            Expanded(
+              child: PageView(
+                controller: _pageController,
+                onPageChanged: _onPageChanged,
+                physics: const BouncingScrollPhysics(),
+                children: _screens,
+              ),
+            ),
+          ],
         ),
         bottomNavigationBar: BottomNavigationBar(
           currentIndex: _selectedIndex,
@@ -218,10 +222,7 @@ class _MyHomePageState extends State<MyHomePage> {
               icon: Icon(Icons.location_on_outlined),
               label: 'Navigate',
             ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.person),
-              label: 'Profile',
-            ),
+            BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
           ],
         ),
       ),

@@ -11,6 +11,7 @@ import '../../providers/battery_provider.dart';
 import '../../providers/theme_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/notification.dart';
+
 const String latestReleaseUrl =
     'https://github.com/RahulSahana/scooby/releases/download/v3.1.0/Scooby.3.1.apk';
 
@@ -22,8 +23,8 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-
   late final TextEditingController _passwordController;
+  late final TextEditingController _pairingCodeController;
 
   String _userName = 'Rahul Sahana';
   String _userDesc = 'West Bengal • App Developer';
@@ -47,6 +48,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     final password = context.read<BatteryProvider>().bmsPassword;
     _passwordController = TextEditingController(text: password);
+    _pairingCodeController = TextEditingController();
 
     _loadProfileData();
   }
@@ -54,6 +56,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void dispose() {
     _passwordController.dispose();
+    _pairingCodeController.dispose();
     super.dispose();
   }
 
@@ -72,11 +75,55 @@ class _ProfileScreenState extends State<ProfileScreen> {
     });
   }
 
-  Future<void> _saveProfileData(
-      String name,
-      String desc,
-      String avatar,
-      ) async {
+  Future<void> _copyScooterPairingCode() async {
+    try {
+      final code = await context
+          .read<BatteryProvider>()
+          .exportScooterPairingCode();
+      await Clipboard.setData(ClipboardData(text: code));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Pairing code copied. Keep it private.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.toString().replaceFirst('Bad state: ', '')),
+        ),
+      );
+    }
+  }
+
+  Future<void> _importScooterPairingCode() async {
+    try {
+      await context.read<BatteryProvider>().importScooterPairingCode(
+        _pairingCodeController.text.trim(),
+      );
+      _pairingCodeController.clear();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Scooter paired. Scooby will try Bluetooth, then server.',
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.toString().replaceFirst('FormatException: ', '')),
+        ),
+      );
+    }
+  }
+
+  Future<void> _saveProfileData(String name, String desc, String avatar) async {
     final prefs = await SharedPreferences.getInstance();
 
     await prefs.setString('profile_name', name);
@@ -195,8 +242,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: primary,
-                    foregroundColor:
-                    Theme.of(dialogContext).colorScheme.onPrimary,
+                    foregroundColor: Theme.of(
+                      dialogContext,
+                    ).colorScheme.onPrimary,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
@@ -226,9 +274,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _showSwitchScooterModal(
-      BuildContext context,
-      BatteryProvider provider,
-      ) async {
+    BuildContext context,
+    BatteryProvider provider,
+  ) async {
     provider.bleService.disconnect();
     provider.bleService.startScan();
 
@@ -243,14 +291,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       builder: (sheetContext) {
         return StatefulBuilder(
           builder: (sheetContext, setModalState) {
-            refreshTimer ??= Timer.periodic(
-              const Duration(seconds: 1),
-                  (_) {
-                if (sheetContext.mounted) {
-                  setModalState(() {});
-                }
-              },
-            );
+            refreshTimer ??= Timer.periodic(const Duration(seconds: 1), (_) {
+              if (sheetContext.mounted) {
+                setModalState(() {});
+              }
+            });
 
             final devices = provider.bleService.devices;
 
@@ -352,13 +397,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildHardwareRow(
-      BuildContext context,
-      AppColors colors,
-      String label,
-      String value, {
-        bool isHighlight = false,
-        bool isCopyable = false,
-      }) {
+    BuildContext context,
+    AppColors colors,
+    String label,
+    String value, {
+    bool isHighlight = false,
+    bool isCopyable = false,
+  }) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -381,12 +426,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   textAlign: TextAlign.end,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: isHighlight
-                        ? colors.primary
-                        : colors.primaryText,
+                    color: isHighlight ? colors.primary : colors.primaryText,
                     fontSize: 14,
-                    fontWeight:
-                    isHighlight ? FontWeight.bold : FontWeight.normal,
+                    fontWeight: isHighlight
+                        ? FontWeight.bold
+                        : FontWeight.normal,
                   ),
                 ),
               ),
@@ -406,9 +450,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     color: colors.primaryText.withValues(alpha: 0.6),
                   ),
                   onPressed: () async {
-                    await Clipboard.setData(
-                      ClipboardData(text: value),
-                    );
+                    await Clipboard.setData(ClipboardData(text: value));
 
                     if (!context.mounted) return;
 
@@ -416,8 +458,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       SnackBar(
                         content: Text('$label copied to clipboard'),
                         behavior: SnackBarBehavior.floating,
-                        backgroundColor:
-                        Theme.of(context).colorScheme.primary,
+                        backgroundColor: Theme.of(context).colorScheme.primary,
                       ),
                     );
                   },
@@ -444,6 +485,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: ListView(
           padding: const EdgeInsets.all(24),
           children: [
+            if (Navigator.of(context).canPop())
+              Align(
+                alignment: Alignment.centerLeft,
+                child: IconButton(
+                  tooltip: 'Back',
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(Icons.arrow_back),
+                ),
+              ),
             Row(
               children: [
                 Container(
@@ -493,9 +543,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ],
             ),
             const SizedBox(height: 28),
-//==============================================================
-          /// APPEARANCE
-//==============================================================
+            //==============================================================
+            /// APPEARANCE
+            //==============================================================
             _sectionLabel('Appearance', colors),
             _panel(
               colors: colors,
@@ -524,9 +574,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             const SizedBox(height: 28),
             _sectionLabel('Notifications', colors),
-//==============================================================
+            //==============================================================
             /// Notifications
-//==============================================================
+            //==============================================================
             const NotificationSettingsCard(),
             const SizedBox(height: 28),
 
@@ -575,9 +625,71 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
             const SizedBox(height: 28),
-//***************************************************
+            _sectionLabel('Remote Telemetry', colors),
+            _panel(
+              colors: colors,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        batteryProvider.isConnected
+                            ? Icons.bluetooth_connected
+                            : batteryProvider.isUsingRemoteTelemetry
+                            ? Icons.cloud_done_outlined
+                            : Icons.cloud_outlined,
+                        color: scheme.primary,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Source: ${batteryProvider.telemetrySourceLabel}',
+                          style: TextStyle(
+                            color: colors.primaryText,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Pair each phone once. Scooby prefers the nearby BMS, then uses server telemetry when Bluetooth is unavailable. Updates are checked every 2 minutes. Android shows a persistent notification while Scooby keeps the paired link active in the background.',
+                    style: TextStyle(color: colors.secondaryText),
+                  ),
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: _copyScooterPairingCode,
+                    icon: const Icon(Icons.copy),
+                    label: const Text('Copy pairing code for this scooter'),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _pairingCodeController,
+                    minLines: 2,
+                    maxLines: 4,
+                    autocorrect: false,
+                    enableSuggestions: false,
+                    decoration: const InputDecoration(
+                      labelText: 'Pair another phone',
+                      hintText: 'Paste the pairing code here',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  FilledButton.icon(
+                    onPressed: _importScooterPairingCode,
+                    icon: const Icon(Icons.link),
+                    label: const Text('Pair scooter'),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 28),
+            //***************************************************
             ///          BMS SECURITY
-//***************************************************
+            //***************************************************
             _sectionLabel('BMS Security', colors),
             _panel(
               colors: colors,
@@ -633,9 +745,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             _passwordController.text,
                           );
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Password updated'),
-                            ),
+                            const SnackBar(content: Text('Password updated')),
                           );
                         },
                         child: const Text('Save'),
@@ -647,9 +757,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             const SizedBox(height: 28),
 
-//==============================================================
-//                         LATEST RELEASE
-//==============================================================
+            //==============================================================
+            //                         LATEST RELEASE
+            //==============================================================
             _sectionLabel('Latest Release', colors),
             _panel(
               colors: colors,
@@ -696,9 +806,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             const SizedBox(height: 28),
 
-//***************************************************
+            //***************************************************
             ///          ABOUT BMS
-//***************************************************
+            //***************************************************
             _sectionLabel('About BMS', colors),
             _panel(
               padding: const EdgeInsets.all(20),
@@ -795,10 +905,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                   const Divider(height: 1, indent: 20, endIndent: 20),
                   SwitchListTile(
-                    secondary: Icon(
-                      Icons.power,
-                      color: scheme.primary,
-                    ),
+                    secondary: Icon(Icons.power, color: scheme.primary),
                     title: Text(
                       'Charge Input',
                       style: TextStyle(color: colors.primaryText),

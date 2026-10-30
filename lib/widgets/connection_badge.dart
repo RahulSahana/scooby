@@ -11,6 +11,7 @@ class ConnectionBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final batteryProvider = context.watch<BatteryProvider>();
     final isConnected = batteryProvider.isConnected;
+    final isRemote = batteryProvider.isUsingRemoteTelemetry;
     final isConnecting = batteryProvider.isConnecting;
 
     Color badgeColor;
@@ -25,6 +26,10 @@ class ConnectionBadge extends StatelessWidget {
       badgeColor = Colors.green;
       badgeText = isSmall ? '' : 'Connected';
       badgeIcon = Icons.bluetooth_connected;
+    } else if (isRemote) {
+      badgeColor = Colors.blue;
+      badgeText = isSmall ? '' : 'Remote';
+      badgeIcon = Icons.cloud_done_outlined;
     } else {
       badgeColor = Colors.redAccent;
       badgeText = isSmall ? '' : 'Disconnected';

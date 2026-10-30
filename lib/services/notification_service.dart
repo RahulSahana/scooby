@@ -10,7 +10,7 @@ class NotificationService {
 
   Future<void> initialize() async {
     const settings = InitializationSettings(
-      android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+      android: AndroidInitializationSettings('ic_notification'),
     );
 
     await _plugin.initialize(settings: settings);
@@ -29,6 +29,7 @@ class NotificationService {
         'scooby_battery_alerts',
         'Battery alerts',
         channelDescription: 'Charging and battery warning alerts',
+        icon: 'ic_notification',
         importance: Importance.high,
         priority: Priority.high,
       ),
@@ -50,6 +51,7 @@ class NotificationService {
         'scooby_temperature_alerts',
         'Temperature alerts',
         channelDescription: 'Battery temperature warning alerts',
+        icon: 'ic_notification',
         importance: Importance.high,
         priority: Priority.high,
       ),
@@ -70,6 +72,7 @@ class NotificationService {
         'scooby_range_alerts',
         'Range alerts',
         channelDescription: 'Low remaining range alerts',
+        icon: 'ic_notification',
         importance: Importance.high,
         priority: Priority.high,
       ),
@@ -90,6 +93,7 @@ class NotificationService {
         'scooby_connection_alerts',
         'Connection alerts',
         channelDescription: 'Scooter Bluetooth connection alerts',
+        icon: 'ic_notification',
         importance: Importance.high,
         priority: Priority.high,
       ),

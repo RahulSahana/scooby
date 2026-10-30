@@ -13,6 +13,8 @@ import '../../providers/navigation_provider.dart';
 import '../../theme/app_colors.dart';
 import 'pandal_picker_sheet.dart';
 import '../../data/pandal_data.dart';
+import '../connect/connect_screen.dart';
+import '../profile/profile_screen.dart';
 
 enum _ReturnOrigin { lastStop, currentLocation }
 
@@ -31,6 +33,10 @@ class _NavigateScreenState extends State<NavigateScreen> {
   Line? _routeLine;
   List<LatLng> _pendingRoutePoints = [];
   final List<Symbol> _stopSymbols = [];
+  BatteryProvider? _batteryProvider;
+  Symbol? _scooterLocationSymbol;
+  double? _lastScooterMarkerLatitude;
+  double? _lastScooterMarkerLongitude;
 
   /// returning Home
   double? _distanceToHomeKm;
@@ -197,6 +203,28 @@ class _NavigateScreenState extends State<NavigateScreen> {
     });
   }
 
+  Future<void> _locateScooter() async {
+    final batteryProvider = context.read<BatteryProvider>();
+    final latitude = batteryProvider.scooterLatitude;
+    final longitude = batteryProvider.scooterLongitude;
+    final controller = _mapController;
+
+    if (latitude == null || longitude == null) {
+      _showMessage(
+        'Scooter location is not available yet. The BMS-connected phone needs to send a location first.',
+      );
+      return;
+    }
+    if (controller == null) {
+      _showMessage('The map is still loading. Try again in a moment.');
+      return;
+    }
+
+    await controller.animateCamera(
+      CameraUpdate.newLatLngZoom(LatLng(latitude, longitude), 16),
+    );
+  }
+
   Future<void> _searchPlaces(String query) async {
     final requestToken = ++_searchRequestToken;
     setState(() => _searchInProgress = true);
@@ -332,8 +360,79 @@ class _NavigateScreenState extends State<NavigateScreen> {
   static const int _maximumStopsForGoogleMaps = 10;
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final provider = context.read<BatteryProvider>();
+    if (_batteryProvider == provider) return;
+    _batteryProvider?.removeListener(_onScooterLocationChanged);
+    _batteryProvider = provider;
+    provider.addListener(_onScooterLocationChanged);
+    unawaited(_syncScooterLocationMarker());
+  }
+
+  void _onScooterLocationChanged() {
+    unawaited(_syncScooterLocationMarker());
+  }
+
+  Future<void> _syncScooterLocationMarker() async {
+    final controller = _mapController;
+    final provider = _batteryProvider;
+    if (!_mapStyleLoaded || controller == null || provider == null) return;
+
+    final latitude = provider.scooterLatitude;
+    final longitude = provider.scooterLongitude;
+    final existing = _scooterLocationSymbol;
+    if (latitude == null || longitude == null) {
+      if (existing != null) {
+        try {
+          await controller.removeSymbol(existing);
+        } catch (_) {}
+        _scooterLocationSymbol = null;
+        _lastScooterMarkerLatitude = null;
+        _lastScooterMarkerLongitude = null;
+      }
+      return;
+    }
+
+    if (_lastScooterMarkerLatitude != null &&
+        _lastScooterMarkerLongitude != null &&
+        Geolocator.distanceBetween(
+              _lastScooterMarkerLatitude!,
+              _lastScooterMarkerLongitude!,
+              latitude,
+              longitude,
+            ) <
+            20) {
+      return;
+    }
+
+    if (existing != null) {
+      try {
+        await controller.removeSymbol(existing);
+      } catch (_) {}
+    }
+    try {
+      _scooterLocationSymbol = await controller.addSymbol(
+        SymbolOptions(
+          geometry: LatLng(latitude, longitude),
+          textField: 'S',
+          textSize: 20,
+          textColor: '#FFFFFF',
+          textHaloColor: '#00796B',
+          textHaloWidth: 8,
+        ),
+      );
+      _lastScooterMarkerLatitude = latitude;
+      _lastScooterMarkerLongitude = longitude;
+    } catch (error) {
+      debugPrint('Could not show scooter location marker: $error');
+    }
+  }
+
+  @override
   void dispose() {
     _positionSubscription?.cancel();
+    _batteryProvider?.removeListener(_onScooterLocationChanged);
     _searchDebounce?.cancel();
     _searchController.dispose();
     super.dispose();
@@ -779,6 +878,20 @@ class _NavigateScreenState extends State<NavigateScreen> {
                 mutedColor: muted,
                 accent: colors.primary,
                 isNavigating: trip.isNavigating,
+                onConnect: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const ConnectScreen(),
+                    ),
+                  );
+                },
+                onProfile: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const ProfileScreen(),
+                    ),
+                  );
+                },
               ),
               const SizedBox(height: 14),
 
@@ -792,6 +905,7 @@ class _NavigateScreenState extends State<NavigateScreen> {
                 onSearchResultSelected: _selectSearchResult,
                 onAddSearchResult: _addSearchedPlaceToTrip,
                 onRecenter: _recenterMap,
+                onLocateScooter: _locateScooter,
                 onZoomIn: () =>
                     _mapController?.animateCamera(CameraUpdate.zoomIn()),
                 onZoomOut: () =>
@@ -805,6 +919,7 @@ class _NavigateScreenState extends State<NavigateScreen> {
 
                   unawaited(_syncStopMarkers(trip.stops));
                   unawaited(_drawPendingRoute());
+                  unawaited(_syncScooterLocationMarker());
                 },
               ),
               const SizedBox(height: 12),
@@ -942,12 +1057,16 @@ class _NavigateHeader extends StatelessWidget {
     required this.mutedColor,
     required this.accent,
     required this.isNavigating,
+    required this.onConnect,
+    required this.onProfile,
   });
 
   final Color textColor;
   final Color mutedColor;
   final Color accent;
   final bool isNavigating;
+  final VoidCallback onConnect;
+  final VoidCallback onProfile;
 
   @override
   Widget build(BuildContext context) {
@@ -966,6 +1085,18 @@ class _NavigateHeader extends StatelessWidget {
                   letterSpacing: 0.8,
                 ),
               ),
+            ),
+            IconButton(
+              tooltip: 'Connect to JK-BMS',
+              visualDensity: VisualDensity.compact,
+              onPressed: onConnect,
+              icon: Icon(Icons.bluetooth_searching, color: accent),
+            ),
+            IconButton(
+              tooltip: 'Profile and remote pairing',
+              visualDensity: VisualDensity.compact,
+              onPressed: onProfile,
+              icon: Icon(Icons.settings_outlined, color: textColor),
             ),
             if (isNavigating) _Pill(text: 'NAVIGATING', color: accent),
           ],
@@ -999,6 +1130,7 @@ class _MapPreview extends StatelessWidget {
     required this.onSearchResultSelected,
     required this.onAddSearchResult,
     required this.onRecenter,
+    required this.onLocateScooter,
     required this.onZoomIn,
     required this.onZoomOut,
     required this.onMapCreated,
@@ -1014,6 +1146,7 @@ class _MapPreview extends StatelessWidget {
   final ValueChanged<ELocation> onSearchResultSelected;
   final VoidCallback onAddSearchResult;
   final VoidCallback onRecenter;
+  final VoidCallback onLocateScooter;
   final VoidCallback onZoomIn;
   final VoidCallback onZoomOut;
   final void Function(MapplsMapController) onMapCreated;
@@ -1141,6 +1274,12 @@ class _MapPreview extends StatelessWidget {
               top: 100,
               child: Column(
                 children: [
+                  _MapControlButton(
+                    icon: Icons.electric_scooter,
+                    tooltip: 'Locate scooter',
+                    onPressed: onLocateScooter,
+                  ),
+                  const SizedBox(height: 8),
                   _MapControlButton(
                     icon: Icons.my_location,
                     tooltip: 'My location',

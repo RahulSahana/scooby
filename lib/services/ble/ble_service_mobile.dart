@@ -10,17 +10,16 @@ class BleService extends BleServiceBase {
   StreamSubscription? _scanSubscription;
   StreamSubscription? _notifySubscription;
   StreamSubscription? _connectionStateSubscription;
-  Timer? _autoReconnectTimer;
   bool _isIntentionallyDisconnected = false;
 
   @override
   Future<void> startScan() async {
     devices.clear();
     debugPrint('MOBILE BLE: STARTING SCAN');
-    
+
     // On mobile, we still pass optional services for consistency and best practice
     await FlutterBluePlus.startScan(
-      timeout: const Duration(seconds: 10), 
+      timeout: const Duration(seconds: 10),
       androidScanMode: AndroidScanMode.lowLatency,
       webOptionalServices: [Guid(BleServiceBase.jkServiceUuid)],
     );
@@ -44,7 +43,10 @@ class BleService extends BleServiceBase {
 
   @override
   Future<void> connect(BluetoothDevice device) async {
-    if (connectedDevice?.remoteId == device.remoteId && batteryProvider.isConnected) return;
+    if (connectedDevice?.remoteId == device.remoteId &&
+        batteryProvider.isConnected) {
+      return;
+    }
 
     await _connectionStateSubscription?.cancel();
     _connectionStateSubscription = null;
@@ -53,11 +55,16 @@ class BleService extends BleServiceBase {
     batteryProvider.setConnectingState(true);
 
     try {
-      await device.connect(license: License.nonprofit, timeout: const Duration(seconds: 15));
+      await device.connect(
+        license: License.nonprofit,
+        timeout: const Duration(seconds: 15),
+      );
       _isIntentionallyDisconnected = false;
-      _autoReconnectTimer?.cancel();
 
-      await batteryProvider.saveScooterToGarage(device.remoteId.str, device.platformName);
+      await batteryProvider.saveScooterToGarage(
+        device.remoteId.str,
+        device.platformName,
+      );
       debugPrint('MOBILE BLE: CONNECTED TO ${device.platformName}');
     } catch (e) {
       debugPrint('MOBILE BLE: CONNECT ERROR $e');
@@ -69,10 +76,7 @@ class BleService extends BleServiceBase {
       if (state == BluetoothConnectionState.disconnected) {
         final unexpected = !_isIntentionallyDisconnected;
         _onDeviceDisconnected(unexpected: unexpected);
-
-        if (unexpected) _startAutoReconnectLoop();
       } else if (state == BluetoothConnectionState.connected) {
-        _autoReconnectTimer?.cancel();
         batteryProvider.setConnectionState(true);
       }
     });
@@ -84,11 +88,15 @@ class BleService extends BleServiceBase {
     try {
       await Future.delayed(const Duration(milliseconds: 500));
       final services = await device.discoverServices();
-      
+
       for (final service in services) {
-        if (service.uuid.toString().toLowerCase().contains(BleServiceBase.jkServiceUuid)) {
+        if (service.uuid.toString().toLowerCase().contains(
+          BleServiceBase.jkServiceUuid,
+        )) {
           for (final characteristic in service.characteristics) {
-            if (characteristic.uuid.toString().toLowerCase().contains(BleServiceBase.jkCharUuid)) {
+            if (characteristic.uuid.toString().toLowerCase().contains(
+              BleServiceBase.jkCharUuid,
+            )) {
               jkCharacteristic = characteristic;
               await _setupCharacteristic(characteristic);
               batteryProvider.setConnectionState(true);
@@ -103,7 +111,9 @@ class BleService extends BleServiceBase {
     }
   }
 
-  Future<void> _setupCharacteristic(BluetoothCharacteristic characteristic) async {
+  Future<void> _setupCharacteristic(
+    BluetoothCharacteristic characteristic,
+  ) async {
     await characteristic.setNotifyValue(true);
     await Future.delayed(const Duration(seconds: 1));
 
@@ -133,7 +143,10 @@ class BleService extends BleServiceBase {
         }
       }
 
-      await FlutterBluePlus.startScan(timeout: const Duration(seconds: 8), androidScanMode: AndroidScanMode.lowLatency);
+      await FlutterBluePlus.startScan(
+        timeout: const Duration(seconds: 8),
+        androidScanMode: AndroidScanMode.lowLatency,
+      );
       await for (final results in FlutterBluePlus.onScanResults) {
         for (ScanResult r in results) {
           if (r.device.remoteId.str == savedId) {
@@ -146,32 +159,14 @@ class BleService extends BleServiceBase {
       }
       batteryProvider.setConnectingState(false);
       return false;
-    } catch (e) {
+    } catch (_) {
       batteryProvider.setConnectingState(false);
       return false;
     }
   }
 
-  void _startAutoReconnectLoop() {
-    _autoReconnectTimer?.cancel();
-    _autoReconnectTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
-      if (connectedDevice == null || batteryProvider.isConnected) {
-        timer.cancel();
-        return;
-      }
-      try {
-        await connectedDevice!.connect(license: License.nonprofit, timeout: const Duration(seconds: 4));
-        await _discoverAndSetup(connectedDevice!);
-        timer.cancel();
-      } catch (e) {
-        debugPrint('MOBILE BLE: Auto-reconnect failed');
-      }
-    });
-  }
-
   @override
   Future<void> forceManualReconnect() async {
-    _autoReconnectTimer?.cancel();
     if (connectedDevice == null) {
       final success = await autoConnect();
       if (!success) batteryProvider.setConnectingState(false);
@@ -179,8 +174,8 @@ class BleService extends BleServiceBase {
     }
     try {
       await connect(connectedDevice!);
-    } catch (e) {
-      _startAutoReconnectLoop();
+    } catch (_) {
+      batteryProvider.setConnectingState(false);
     }
   }
 
@@ -189,17 +184,13 @@ class BleService extends BleServiceBase {
     packetBuffer.clear();
     jkCharacteristic = null;
 
-    batteryProvider.setConnectionState(
-      false,
-      unexpectedDisconnect: unexpected,
-    );
+    batteryProvider.setConnectionState(false, unexpectedDisconnect: unexpected);
   }
 
   @override
   Future<void> disconnect({bool forgetDevice = false}) async {
     try {
       _isIntentionallyDisconnected = true;
-      _autoReconnectTimer?.cancel();
       _onDeviceDisconnected();
 
       await _notifySubscription?.cancel();

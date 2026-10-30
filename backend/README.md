@@ -6,8 +6,9 @@ This folder is a Vercel project for Scooby's small, latest-reading API. It store
 
 - `POST /api/telemetry` publishes the latest battery reading and optional GPS position.
 - `GET /api/latest?deviceId=...` returns the latest reading and both the phone-observed and server-received timestamps.
+- `GET /api/app-update` returns public update information for the Flutter app. It returns `enabled: false` until update metadata is configured.
 
-Both endpoints require `Authorization: Bearer <pairing-token>`. The first successful upload claims the device ID and token. The server stores only a SHA-256 hash of the token. A phone that has been paired with the scooter can read the latest value and can publish when it connects to the BMS over Bluetooth.
+The telemetry endpoints require `Authorization: Bearer <pairing-token>`. The first successful upload claims the device ID and token. The server stores only a SHA-256 hash of the token. A phone that has been paired with the scooter can read the latest value and can publish when it connects to the BMS over Bluetooth. The app update endpoint is public and contains only release metadata.
 
 ## Deploy with Vercel and Upstash
 
@@ -22,3 +23,14 @@ Both endpoints require `Authorization: Bearer <pairing-token>`. The first succes
 The Flutter app must generate a random device ID, a random pairing token with at least 32 URL-safe characters, and a random publisher-session ID. Keep the pairing token in platform-secure storage. The first phone creates the scooter's shared identity; other authorized phones receive the device ID and token through a one-time QR/pairing flow. Every authorized phone can then read the server snapshot and publish if it obtains the local BLE connection.
 
 The API only accepts HTTPS in production. `observedAt` is sent by the phone, while `receivedAt` is assigned by the server; clients should use the latter to decide whether a value is stale. The Upstash Free plan currently includes 500,000 commands per month. At a two-minute cadence, one publisher and one remote reader use roughly 64,800 Redis commands per 30-day month (three commands per cycle), excluding occasional setup or retries. Keep within the free-plan quota; do not upgrade to a paid plan if the project must remain free.
+
+## App update banner
+
+The Flutter app checks `/api/app-update` when the connection screen and dashboard open. Configure these environment variables for the **Production** environment in the Vercel project to publish an update notice:
+
+- `SCOOBY_LATEST_VERSION`: app version, such as `3.0.2`.
+- `SCOOBY_LATEST_BUILD_NUMBER`: Flutter build number from the `+` part of `pubspec.yaml`, such as `4` for `3.0.2+4`.
+- `SCOOBY_RELEASE_NOTES`: short text shown in the banner.
+- `SCOOBY_DOWNLOAD_URL`: HTTPS link to the GitHub release or APK download. If omitted or invalid, the banner opens the GitHub Releases page.
+
+After setting or changing these values, redeploy the Vercel project. Attach the APK to the GitHub release so Android users can download and install it. The banner only notifies and opens the download page; Android still asks the user to confirm installation. Dismissal is remembered for that announced version, and a notice appears again when a newer version is published.
