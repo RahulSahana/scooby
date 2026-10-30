@@ -37,8 +37,6 @@ class RemoteTelemetryService {
     : _client = client ?? http.Client();
 
   static final Uri _baseUri = Uri.parse('https://scooby-backend.vercel.app');
-  static final RegExp _deviceIdPattern = RegExp(r'^[A-Za-z0-9_-]{16,80}$');
-  static final RegExp _tokenPattern = RegExp(r'^[A-Za-z0-9_-]{32,128}$');
 
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
   final http.Client _client;
@@ -113,47 +111,6 @@ class RemoteTelemetryService {
     );
   }
 
-  Future<String> exportPairingCode(String bleDeviceId) async {
-    final pairing = await ensureLocalPairing(bleDeviceId);
-    return jsonEncode({
-      'version': 1,
-      'deviceId': pairing.deviceId,
-      'token': pairing.token,
-      'bleDeviceId': pairing.bleDeviceId,
-      'scooterName': pairing.scooterName,
-    });
-  }
-
-  Future<ScooterPairing> importPairingCode(String code) async {
-    final decoded = jsonDecode(code);
-    if (decoded is! Map) throw const FormatException('Invalid pairing code.');
-    final deviceId = decoded['deviceId'];
-    final token = decoded['token'];
-    final bleDeviceId = decoded['bleDeviceId'];
-    final scooterName = decoded['scooterName'];
-    if (decoded['version'] != 1 ||
-        deviceId is! String ||
-        !_deviceIdPattern.hasMatch(deviceId) ||
-        token is! String ||
-        !_tokenPattern.hasMatch(token) ||
-        bleDeviceId is! String ||
-        bleDeviceId.isEmpty ||
-        bleDeviceId.length > 80) {
-      throw const FormatException('Pairing code is incomplete or invalid.');
-    }
-
-    final pairing = ScooterPairing(
-      deviceId: deviceId,
-      token: token,
-      bleDeviceId: bleDeviceId,
-      scooterName: scooterName is String && scooterName.isNotEmpty
-          ? scooterName
-          : 'Scooby scooter',
-    );
-    await _writePairing(pairing);
-    return pairing;
-  }
-
   Future<void> publishLatest({
     required ScooterPairing pairing,
     required BatteryData battery,
@@ -204,13 +161,9 @@ class RemoteTelemetryService {
     return candidate.length <= 80 ? candidate : candidate.substring(0, 80);
   }
 
-  Future<RemoteTelemetrySnapshot?> fetchLatest(ScooterPairing pairing) async {
-    final uri = _baseUri.replace(
-      path: '/api/latest',
-      queryParameters: {'deviceId': pairing.deviceId},
-    );
+  Future<RemoteTelemetrySnapshot?> fetchPublicLatest() async {
     final response = await _client
-        .get(uri, headers: {'Authorization': 'Bearer ${pairing.token}'})
+        .get(_baseUri.resolve('/api/public-latest'))
         .timeout(const Duration(seconds: 12));
 
     if (response.statusCode == 404) return null;
@@ -218,7 +171,11 @@ class RemoteTelemetryService {
       throw StateError('Telemetry fetch failed (${response.statusCode}).');
     }
 
-    final decoded = jsonDecode(response.body);
+    return _decodeSnapshot(response.body);
+  }
+
+  RemoteTelemetrySnapshot _decodeSnapshot(String body) {
+    final decoded = jsonDecode(body);
     if (decoded is! Map || decoded['payload'] is! Map) {
       throw const FormatException('Server returned invalid telemetry.');
     }

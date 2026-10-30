@@ -79,8 +79,12 @@ class _AppUpdateBannerState extends State<AppUpdateBanner> {
     final release = _release;
     if (release == null || _dismissed) return const SizedBox.shrink();
 
-    final colors = Theme.of(context).extension<AppColors>()!;
-    final accent = Theme.of(context).colorScheme.primary;
+    final appColors = Theme.of(context).extension<AppColors>();
+    final colorScheme = Theme.of(context).colorScheme;
+    final accent = colorScheme.primary;
+    final primaryText = appColors?.primaryText ?? colorScheme.onSurface;
+    final secondaryText =
+        appColors?.secondaryText ?? colorScheme.onSurfaceVariant;
 
     return AnimatedSize(
       duration: const Duration(milliseconds: 220),
@@ -105,7 +109,7 @@ class _AppUpdateBannerState extends State<AppUpdateBanner> {
                   child: Text(
                     'Scooby update available · v${release.version}',
                     style: TextStyle(
-                      color: colors.primaryText,
+                      color: primaryText,
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
                     ),
@@ -119,7 +123,7 @@ class _AppUpdateBannerState extends State<AppUpdateBanner> {
                     height: 40,
                   ),
                   onPressed: _dismissUpdate,
-                  icon: Icon(Icons.close, color: colors.secondaryText, size: 19),
+                  icon: Icon(Icons.close, color: secondaryText, size: 19),
                 ),
               ],
             ),
@@ -131,7 +135,7 @@ class _AppUpdateBannerState extends State<AppUpdateBanner> {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: colors.secondaryText,
+                    color: secondaryText,
                     fontSize: 12,
                   ),
                 ),

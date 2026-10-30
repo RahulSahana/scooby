@@ -14,6 +14,7 @@ import '../services/background_sync_service.dart';
 
 class BatteryProvider extends ChangeNotifier {
   late BleService bleService;
+  late final Future<void> garageReady;
   BatteryData _batteryData = BatteryData.empty();
   String _bmsPassword = "1234";
 
@@ -52,7 +53,7 @@ class BatteryProvider extends ChangeNotifier {
 
   BatteryProvider() {
     bleService = BleService(batteryProvider: this);
-    loadGarage();
+    garageReady = loadGarage();
     initializeRangeEstimator();
   }
 
@@ -243,7 +244,7 @@ class BatteryProvider extends ChangeNotifier {
         return {'id': parts[0], 'name': parts[1]};
       }).toList();
     }
-    _startRemotePollTimer();
+    _startRemotePollTimer(immediate: true);
     notifyListeners();
     if (_primaryScooterId != null) {
       unawaited(_autoConnectThenUseRemote());
@@ -256,34 +257,6 @@ class BatteryProvider extends ChangeNotifier {
     await prefs.setString('primary_scooter_id', macAddress);
     if (!_isConnected) _startRemotePollTimer(immediate: true);
     notifyListeners();
-  }
-
-  Future<String> exportScooterPairingCode() async {
-    final bleDeviceId = _primaryScooterId;
-    if (bleDeviceId == null || bleDeviceId.isEmpty) {
-      throw StateError('Connect to the scooter over Bluetooth first.');
-    }
-    final matchingScooters = _savedGarage.where(
-      (scooter) => scooter['id'] == bleDeviceId,
-    );
-    final scooterName = matchingScooters.isEmpty
-        ? 'Scooby scooter'
-        : matchingScooters.first['name'] ?? 'Scooby scooter';
-    final pairing = await remoteTelemetryService.ensureLocalPairing(
-      bleDeviceId,
-      scooterName: scooterName,
-    );
-    return remoteTelemetryService.exportPairingCode(pairing.bleDeviceId);
-  }
-
-  Future<void> importScooterPairingCode(String code) async {
-    final pairing = await remoteTelemetryService.importPairingCode(code);
-    await saveScooterToGarage(pairing.bleDeviceId, pairing.scooterName);
-    await setPrimaryScooter(pairing.bleDeviceId);
-    if (!_isConnected) {
-      _startRemotePollTimer(immediate: true);
-      unawaited(_autoConnectThenUseRemote());
-    }
   }
 
   Future<void> saveScooterToGarage(String macAddress, String name) async {
@@ -341,6 +314,7 @@ class BatteryProvider extends ChangeNotifier {
         Permission.bluetoothConnect,
       ].request();
       if (permissions.values.any((status) => !status.isGranted)) {
+        setConnectingState(false);
         _startRemotePollTimer(immediate: true);
         _startBluetoothRetryTimer();
         return;
@@ -466,13 +440,9 @@ class BatteryProvider extends ChangeNotifier {
 
   Future<void> _pollRemoteTelemetry() async {
     if (_isConnected) return;
-    final bleDeviceId = _primaryScooterId;
-    if (bleDeviceId == null) return;
 
     try {
-      final pairing = await remoteTelemetryService.pairingFor(bleDeviceId);
-      if (pairing == null) return;
-      final snapshot = await remoteTelemetryService.fetchLatest(pairing);
+      final snapshot = await remoteTelemetryService.fetchPublicLatest();
       if (snapshot == null) {
         _isUsingRemoteTelemetry = false;
         notifyListeners();

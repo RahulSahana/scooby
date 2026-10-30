@@ -15,6 +15,9 @@ function keyFor(deviceId) {
   return `scooby:latest:${deviceId}`;
 }
 
+const publicDeviceKey = 'scooby:public:device';
+const publicLatestKey = 'scooby:public:latest';
+
 function hashAccessToken(token) {
   return createHash('sha256').update(token, 'utf8').digest('hex');
 }
@@ -58,14 +61,38 @@ export async function publishLatest({
   };
 
   let existing = await getRecord(redis, key);
+  let accepted = false;
   if (!existing) {
     const created = await redis.set(key, record, { nx: true });
-    if (created === 'OK') return true;
-    existing = await getRecord(redis, key);
+    if (created === 'OK') {
+      accepted = true;
+    } else {
+      existing = await getRecord(redis, key);
+    }
   }
 
-  if (!existing || !tokenMatches(existing.accessTokenHash, accessTokenHash)) return false;
-  await redis.set(key, record);
+  if (!accepted) {
+    if (!existing || !tokenMatches(existing.accessTokenHash, accessTokenHash)) {
+      return false;
+    }
+    await redis.set(key, record);
+  }
+
+  let publicDeviceId = await redis.get(publicDeviceKey);
+  if (publicDeviceId == null) {
+    const claimed = await redis.set(publicDeviceKey, deviceId, { nx: true });
+    publicDeviceId = claimed === 'OK'
+      ? deviceId
+      : await redis.get(publicDeviceKey);
+  }
+  if (publicDeviceId === deviceId) {
+    await redis.set(publicLatestKey, {
+      payload,
+      observedAt,
+      receivedAt: record.receivedAt,
+    });
+  }
+
   return true;
 }
 
@@ -77,4 +104,16 @@ export async function readLatest({ deviceId, accessToken }) {
 
   const { accessTokenHash: _accessTokenHash, ...publicRecord } = record;
   return publicRecord;
+}
+
+export async function readPublicLatest() {
+  const redis = getRedis();
+  const record = await getRecord(redis, publicLatestKey);
+  if (!record || !record.payload || !record.receivedAt) return null;
+
+  return {
+    payload: record.payload,
+    observedAt: record.observedAt,
+    receivedAt: record.receivedAt,
+  };
 }

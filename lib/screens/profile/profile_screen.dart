@@ -24,7 +24,6 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   late final TextEditingController _passwordController;
-  late final TextEditingController _pairingCodeController;
 
   String _userName = 'Rahul Sahana';
   String _userDesc = 'West Bengal • App Developer';
@@ -48,7 +47,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     final password = context.read<BatteryProvider>().bmsPassword;
     _passwordController = TextEditingController(text: password);
-    _pairingCodeController = TextEditingController();
 
     _loadProfileData();
   }
@@ -56,7 +54,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void dispose() {
     _passwordController.dispose();
-    _pairingCodeController.dispose();
     super.dispose();
   }
 
@@ -73,54 +70,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _userAvatar = prefs.getString('profile_avatar') ?? '🤖';
       _appVersion = 'v${packageInfo.version}';
     });
-  }
-
-  Future<void> _copyScooterPairingCode() async {
-    try {
-      final code = await context
-          .read<BatteryProvider>()
-          .exportScooterPairingCode();
-      await Clipboard.setData(ClipboardData(text: code));
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Pairing code copied. Keep it private.'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(error.toString().replaceFirst('Bad state: ', '')),
-        ),
-      );
-    }
-  }
-
-  Future<void> _importScooterPairingCode() async {
-    try {
-      await context.read<BatteryProvider>().importScooterPairingCode(
-        _pairingCodeController.text.trim(),
-      );
-      _pairingCodeController.clear();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Scooter paired. Scooby will try Bluetooth, then server.',
-          ),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(error.toString().replaceFirst('FormatException: ', '')),
-        ),
-      );
-    }
   }
 
   Future<void> _saveProfileData(String name, String desc, String avatar) async {
@@ -655,33 +604,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Pair each phone once. Scooby prefers the nearby BMS, then uses server telemetry when Bluetooth is unavailable. Updates are checked every 2 minutes. Android shows a persistent notification while Scooby keeps the paired link active in the background.',
+                    'Scooby switches to the server automatically when this phone is not connected to the BMS. Readings update every 2 minutes while the BMS-connected phone is online.',
                     style: TextStyle(color: colors.secondaryText),
                   ),
                   const SizedBox(height: 12),
-                  OutlinedButton.icon(
-                    onPressed: _copyScooterPairingCode,
-                    icon: const Icon(Icons.copy),
-                    label: const Text('Copy pairing code for this scooter'),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: _pairingCodeController,
-                    minLines: 2,
-                    maxLines: 4,
-                    autocorrect: false,
-                    enableSuggestions: false,
-                    decoration: const InputDecoration(
-                      labelText: 'Pair another phone',
-                      hintText: 'Paste the pairing code here',
-                      border: OutlineInputBorder(),
+                  Text(
+                    'Public feed: anyone can view battery telemetry and scooter location. No pairing code is needed.',
+                    style: TextStyle(
+                      color: colors.warningAmber,
+                      fontWeight: FontWeight.w600,
                     ),
-                  ),
-                  const SizedBox(height: 10),
-                  FilledButton.icon(
-                    onPressed: _importScooterPairingCode,
-                    icon: const Icon(Icons.link),
-                    label: const Text('Pair scooter'),
                   ),
                 ],
               ),

@@ -26,6 +26,7 @@ class _ConnectScreenState extends State<ConnectScreen>
 
   bool isScanning = false;
   bool isConnecting = false;
+  bool _dashboardOpened = false;
   List<BluetoothDevice> devices = [];
 
   // =========================================================
@@ -82,7 +83,7 @@ class _ConnectScreenState extends State<ConnectScreen>
   Future<void> _initializeApp() async {
     if (!await checkBluetoothSupport()) return;
 
-    await requestPermissions();
+    await _batteryProvider.garageReady;
     if (!mounted) return;
 
     // Web Bluetooth restriction: Scanning MUST be triggered by user interaction.
@@ -92,32 +93,60 @@ class _ConnectScreenState extends State<ConnectScreen>
       return;
     }
 
-    // Start the cinematic connection sequence for mobile
-    setState(() => isConnecting = true);
-    _startStatusTimer();
-
-    // Attempt auto-connect
-    final autoConnectSuccess = await _batteryProvider.bleService.autoConnect();
-
-    if (!autoConnectSuccess && mounted) {
-      _stopStatusTimer();
-      setState(() => isConnecting = false);
-      await startScan();
+    if (_batteryProvider.isConnected ||
+        _batteryProvider.isUsingRemoteTelemetry) {
+      _onBatteryProviderChanged();
+      return;
     }
+
+    // A saved scooter is managed by BatteryProvider, which retries BLE and
+    // polls its shared server telemetry. Avoid launching a second BLE scan here.
+    if (_batteryProvider.primaryScooterId != null) {
+      setState(() {
+        isConnecting = _batteryProvider.isConnecting;
+      });
+      if (isConnecting) _startStatusTimer();
+      if (_batteryProvider.isConnected ||
+          _batteryProvider.isUsingRemoteTelemetry) {
+        _onBatteryProviderChanged();
+      }
+      return;
+    }
+
+    await requestPermissions();
+    if (!mounted) return;
+
+    // Keep scanning locally while the provider checks the public server feed.
+    setState(() => isConnecting = false);
+    await startScan();
+  }
+
+  void _showConnectionScreen() {
+    if (!mounted || !isConnecting) return;
+    _stopStatusTimer();
+    setState(() => isConnecting = false);
   }
 
   void _onBatteryProviderChanged() {
-    if (!mounted) return; // THIS LINE STOPS THE CRASHES!
+    if (!mounted) return;
 
-    if (_batteryProvider.isConnected) {
-      debugPrint("AUTO-NAVIGATING TO DASHBOARD");
+    if (_batteryProvider.isConnected ||
+        _batteryProvider.isUsingRemoteTelemetry) {
+      if (_dashboardOpened) return;
+      _dashboardOpened = true;
+      debugPrint("OPENING DASHBOARD FOR SCOOBY TELEMETRY");
       _stopStatusTimer();
-      _batteryProvider.bleService.stopScan();
+      unawaited(_batteryProvider.bleService.stopScan());
 
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => const MyHomePage()),
       );
+      return;
+    }
+
+    if (isConnecting && !_batteryProvider.isConnecting) {
+      _showConnectionScreen();
     }
   }
 
@@ -190,6 +219,7 @@ class _ConnectScreenState extends State<ConnectScreen>
     await Future.delayed(const Duration(seconds: 5));
     if (!mounted) return;
 
+    await _batteryProvider.bleService.stopScan();
     _stopStatusTimer();
     setState(() {
       devices = _batteryProvider.bleService.devices;
@@ -284,71 +314,84 @@ class _ConnectScreenState extends State<ConnectScreen>
   // CINEMATIC RADAR VIEW
   // =========================================================
   Widget _buildCinematicConnectingView() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.start,
-        children: [
-          Image.asset(
-            'lib/assets/Durga.png',
-            width: 300,
-            height: 300,
-            fit: BoxFit.contain,
-          ),
-          const SizedBox(height: 8),
-          SizedBox(
-            width: 300,
-            height: 300,
-            child: Stack(
-              alignment: Alignment.center,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final availableHeight = constraints.maxHeight;
+        final durgaSize =
+            (availableHeight * 0.34).clamp(170.0, 280.0).toDouble();
+        final radarSize =
+            (availableHeight * 0.38).clamp(190.0, 300.0).toDouble();
+
+        return SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: availableHeight),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                AnimatedBuilder(
-                  animation: _radarController,
-                  builder: (context, child) {
-                    return CustomPaint(
-                      size: const Size(300, 300),
-                      painter: RadarPainter(
-                        progress: _radarController.value,
-                        color: Colors.teal,
+                Image.asset(
+                  'lib/assets/Durga.png',
+                  width: durgaSize,
+                  height: durgaSize,
+                  fit: BoxFit.contain,
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: radarSize,
+                  height: radarSize,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      AnimatedBuilder(
+                        animation: _radarController,
+                        builder: (context, child) {
+                          return CustomPaint(
+                            size: Size(radarSize, radarSize),
+                            painter: RadarPainter(
+                              progress: _radarController.value,
+                              color: Colors.teal,
+                            ),
+                          );
+                        },
+                      ),
+                      Image.asset(
+                        'lib/assets/scooty.png',
+                        width: radarSize * 0.6,
+                        fit: BoxFit.contain,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 500),
+                  transitionBuilder: (Widget child, Animation<double> animation) {
+                    return FadeTransition(
+                      opacity: animation,
+                      child: SlideTransition(
+                        position: Tween<Offset>(
+                          begin: const Offset(0.0, 0.2),
+                          end: Offset.zero,
+                        ).animate(animation),
+                        child: child,
                       ),
                     );
                   },
-                ),
-                Image.asset(
-                  'lib/assets/scooty.png',
-                  width: 180,
-                  fit: BoxFit.contain,
+                  child: Text(
+                    _statusMessages[_statusIndex],
+                    key: ValueKey<int>(_statusIndex),
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.teal,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 50),
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 500),
-            transitionBuilder: (Widget child, Animation<double> animation) {
-              return FadeTransition(
-                opacity: animation,
-                child: SlideTransition(
-                  position: Tween<Offset>(
-                    begin: const Offset(0.0, 0.2),
-                    end: Offset.zero,
-                  ).animate(animation),
-                  child: child,
-                ),
-              );
-            },
-            child: Text(
-              _statusMessages[_statusIndex],
-              key: ValueKey<int>(_statusIndex),
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-                color: Colors.teal,
-                letterSpacing: 0.5,
-              ),
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -356,10 +399,26 @@ class _ConnectScreenState extends State<ConnectScreen>
   // MANUAL DEVICE LIST
   // =========================================================
   Widget _buildDeviceList() {
-    return ListView.builder(
+    return ListView(
       padding: const EdgeInsets.all(16),
-      itemCount: devices.length,
-      itemBuilder: (context, index) => _buildDeviceCard(devices[index]),
+      children: [
+        _buildRemoteStatusCard(),
+        const Padding(
+          padding: EdgeInsets.only(bottom: 10),
+          child: Text(
+            'Nearby Bluetooth devices',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+          ),
+        ),
+        for (final device in devices) _buildDeviceCard(device),
+        Center(
+          child: TextButton.icon(
+            onPressed: startScan,
+            icon: const Icon(Icons.refresh),
+            label: const Text('Scan for nearby scooter'),
+          ),
+        ),
+      ],
     );
   }
 
@@ -424,28 +483,59 @@ class _ConnectScreenState extends State<ConnectScreen>
   }
 
   Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.bluetooth_disabled,
-            size: 90,
-            color: Colors.grey[300],
-          ),
-          const SizedBox(height: 20),
-          Text(
-            "No BLE Devices Found",
-            style: TextStyle(
-              fontSize: 18,
-              color: Colors.grey[600],
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 10),
-          TextButton(
+    return ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        _buildRemoteStatusCard(noNearbyScooter: true),
+        Center(
+          child: TextButton.icon(
             onPressed: startScan,
-            child: const Text("Scan Again"),
+            icon: const Icon(Icons.refresh),
+            label: const Text('Scan for nearby scooter'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRemoteStatusCard({bool noNearbyScooter = false}) {
+    final isRemote = _batteryProvider.isUsingRemoteTelemetry;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withAlpha(22),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            isRemote
+                ? 'Scooby server connected'
+                : (noNearbyScooter
+                      ? 'No nearby scooter found'
+                      : 'Checking Scooby server automatically'),
+            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            isRemote
+                ? 'Live battery telemetry is arriving from the BMS-connected phone.'
+                : 'Scooby checks for live readings from the phone connected to the BMS. No setup is needed.',
+            style: const TextStyle(fontSize: 13, color: Colors.black54),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'This feed is public and includes battery telemetry and scooter location.',
+            style: TextStyle(fontSize: 12, color: Colors.black54),
           ),
         ],
       ),

@@ -6,9 +6,10 @@ This folder is a Vercel project for Scooby's small, latest-reading API. It store
 
 - `POST /api/telemetry` publishes the latest battery reading and optional GPS position.
 - `GET /api/latest?deviceId=...` returns the latest reading and both the phone-observed and server-received timestamps.
+- `GET /api/public-latest` returns the app's public latest battery/location snapshot without authentication.
 - `GET /api/app-update` returns public update information for the Flutter app. It returns `enabled: false` until update metadata is configured.
 
-The telemetry endpoints require `Authorization: Bearer <pairing-token>`. The first successful upload claims the device ID and token. The server stores only a SHA-256 hash of the token. A phone that has been paired with the scooter can read the latest value and can publish when it connects to the BMS over Bluetooth. The app update endpoint is public and contains only release metadata.
+`POST /api/telemetry` and `GET /api/latest` require `Authorization: Bearer <publisher-token>`. A phone connected to the BMS publishes telemetry. Scooby reads the public snapshot automatically when its phone is not connected to the BMS. The public endpoint exposes the latest battery telemetry and scooter location to anyone who can reach it; it is intended for this single shared scooter. The app update endpoint is also public and contains release metadata.
 
 ## Deploy with Vercel and Upstash
 
@@ -18,11 +19,11 @@ The telemetry endpoints require `Authorization: Bearer <pairing-token>`. The fir
 4. Deploy the project. The API stores only the latest snapshot per scooter in Redis.
 5. Set the deployed API base URL in the Flutter app. Do not put a shared token in source code or a compile-time environment variable.
 
-## Pairing and client secrets
+## Public scooter feed
 
-The Flutter app must generate a random device ID, a random pairing token with at least 32 URL-safe characters, and a random publisher-session ID. Keep the pairing token in platform-secure storage. The first phone creates the scooter's shared identity; other authorized phones receive the device ID and token through a one-time QR/pairing flow. Every authorized phone can then read the server snapshot and publish if it obtains the local BLE connection.
+The BMS-connected phone generates its publisher token locally and stores it in platform-secure storage. Each accepted publisher keeps its own private telemetry record. The first publisher claims the public-feed slot, and later reads from any Scooby install return that publisher's latest snapshot. Remote phones need no pairing action or account.
 
-The API only accepts HTTPS in production. `observedAt` is sent by the phone, while `receivedAt` is assigned by the server; clients should use the latter to decide whether a value is stale. The Upstash Free plan currently includes 500,000 commands per month. At a two-minute cadence, one publisher and one remote reader use roughly 64,800 Redis commands per 30-day month (three commands per cycle), excluding occasional setup or retries. Keep within the free-plan quota; do not upgrade to a paid plan if the project must remain free.
+`observedAt` is sent by the phone, while `receivedAt` is assigned by the server; clients use the latter to decide whether a value is stale. Keep the two-minute publish/read cadence to limit Redis usage.
 
 ## App update banner
 
