@@ -17,13 +17,6 @@ class BleService extends BleServiceBase {
     devices.clear();
     debugPrint('MOBILE BLE: STARTING SCAN');
 
-    // On mobile, we still pass optional services for consistency and best practice
-    await FlutterBluePlus.startScan(
-      timeout: const Duration(seconds: 10),
-      androidScanMode: AndroidScanMode.lowLatency,
-      webOptionalServices: [Guid(BleServiceBase.jkServiceUuid)],
-    );
-
     _scanSubscription = FlutterBluePlus.scanResults.listen((results) {
       for (final result in results) {
         final device = result.device;
@@ -32,6 +25,19 @@ class BleService extends BleServiceBase {
         }
       }
     });
+
+    try {
+      // Listen before starting the scan so early advertisements are not missed.
+      await FlutterBluePlus.startScan(
+        timeout: const Duration(seconds: 10),
+        androidScanMode: AndroidScanMode.lowLatency,
+        webOptionalServices: [Guid(BleServiceBase.jkServiceUuid)],
+      );
+    } catch (_) {
+      await _scanSubscription?.cancel();
+      _scanSubscription = null;
+      rethrow;
+    }
   }
 
   @override

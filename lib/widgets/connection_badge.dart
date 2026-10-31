@@ -13,23 +13,34 @@ class ConnectionBadge extends StatelessWidget {
     final isConnected = batteryProvider.isConnected;
     final isRemote = batteryProvider.isUsingRemoteTelemetry;
     final isConnecting = batteryProvider.isConnecting;
+    final lastTelemetryAt = batteryProvider.remoteTelemetryReceivedAt;
+    final hasStaleTelemetry =
+        !isConnected && !isRemote && lastTelemetryAt != null;
 
     Color badgeColor;
     String badgeText;
     IconData badgeIcon;
 
-    if (isConnecting) {
-      badgeColor = Colors.orange;
-      badgeText = isSmall ? '...' : 'Connecting...';
-      badgeIcon = Icons.bluetooth_searching;
-    } else if (isConnected) {
+    if (isConnected) {
       badgeColor = Colors.green;
       badgeText = isSmall ? '' : 'Connected';
       badgeIcon = Icons.bluetooth_connected;
     } else if (isRemote) {
       badgeColor = Colors.blue;
-      badgeText = isSmall ? '' : 'Remote';
+      badgeText = isSmall
+          ? ''
+          : (isConnecting ? 'Remote · reconnecting BMS' : 'Remote · live');
       badgeIcon = Icons.cloud_done_outlined;
+    } else if (hasStaleTelemetry) {
+      badgeColor = Colors.deepOrange;
+      badgeText = isSmall
+          ? '!'
+          : '${isConnecting ? 'Reconnecting · ' : ''}Stale · ${_ageLabel(lastTelemetryAt)}';
+      badgeIcon = Icons.cloud_off_outlined;
+    } else if (isConnecting) {
+      badgeColor = Colors.orange;
+      badgeText = isSmall ? '...' : 'Connecting...';
+      badgeIcon = Icons.bluetooth_searching;
     } else {
       badgeColor = Colors.redAccent;
       badgeText = isSmall ? '' : 'Disconnected';
@@ -82,5 +93,13 @@ class ConnectionBadge extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  String _ageLabel(DateTime timestamp) {
+    final age = DateTime.now().difference(timestamp);
+    if (age.isNegative || age.inSeconds < 60) return 'under 1m old';
+    if (age.inMinutes < 60) return '${age.inMinutes}m old';
+    if (age.inHours < 24) return '${age.inHours}h old';
+    return '${age.inDays}d old';
   }
 }

@@ -34,6 +34,7 @@ class _ConnectScreenState extends State<ConnectScreen>
   // =========================================================
   late AnimationController _radarController;
   Timer? _statusTimer;
+  Timer? _autoScanTimer;
   int _statusIndex = 0;
 
   final List<String> _statusMessages = [
@@ -72,6 +73,7 @@ class _ConnectScreenState extends State<ConnectScreen>
 
     _radarController.dispose();
     _stopStatusTimer();
+    _autoScanTimer?.cancel();
     _batteryProvider.bleService.stopScan();
 
     super.dispose();
@@ -119,6 +121,22 @@ class _ConnectScreenState extends State<ConnectScreen>
     // Keep scanning locally while the provider checks the public server feed.
     setState(() => isConnecting = false);
     await startScan();
+    _startAutomaticScanTimer();
+  }
+
+  void _startAutomaticScanTimer() {
+    if (kIsWeb || _autoScanTimer != null) return;
+    _autoScanTimer = Timer.periodic(const Duration(minutes: 2), (_) {
+      if (!mounted ||
+          isScanning ||
+          isConnecting ||
+          _batteryProvider.primaryScooterId != null ||
+          _batteryProvider.isConnected ||
+          _batteryProvider.isUsingRemoteTelemetry) {
+        return;
+      }
+      unawaited(startScan());
+    });
   }
 
   void _showConnectionScreen() {
@@ -132,6 +150,8 @@ class _ConnectScreenState extends State<ConnectScreen>
 
     if (_batteryProvider.isConnected ||
         _batteryProvider.isUsingRemoteTelemetry) {
+      _autoScanTimer?.cancel();
+      _autoScanTimer = null;
       if (_dashboardOpened) return;
       _dashboardOpened = true;
       debugPrint("OPENING DASHBOARD FOR SCOOBY TELEMETRY");
@@ -142,6 +162,22 @@ class _ConnectScreenState extends State<ConnectScreen>
         context,
         MaterialPageRoute(builder: (_) => const MyHomePage()),
       );
+      return;
+    }
+
+    if (_batteryProvider.primaryScooterId != null) {
+      _autoScanTimer?.cancel();
+      _autoScanTimer = null;
+    }
+
+    // A saved BMS is retried by BatteryProvider on a schedule. Mirror those
+    // background scan attempts in this screen so it does not look idle while
+    // the BLE plugin is searching for the saved scooter.
+    if (_batteryProvider.primaryScooterId != null &&
+        _batteryProvider.isConnecting &&
+        !isConnecting) {
+      setState(() => isConnecting = true);
+      _startStatusTimer();
       return;
     }
 
@@ -216,7 +252,7 @@ class _ConnectScreenState extends State<ConnectScreen>
 
     await _batteryProvider.bleService.startScan();
 
-    await Future.delayed(const Duration(seconds: 5));
+    await Future.delayed(const Duration(seconds: 8));
     if (!mounted) return;
 
     await _batteryProvider.bleService.stopScan();
@@ -226,6 +262,22 @@ class _ConnectScreenState extends State<ConnectScreen>
       isScanning = false;
     });
     debugPrint("DEVICES FOUND: ${devices.length}");
+
+    // First-time installs have no saved BLE address yet. The known BMS
+    // advertises as "Scooty", so connect to that match automatically while
+    // leaving unrelated devices such as laptops untouched.
+    BluetoothDevice? recognizedBms;
+    for (final device in devices) {
+      final name = device.platformName.trim().toLowerCase();
+      if (name == 'scooty' || name == 'jk-bms' || name == 'jkbms') {
+        recognizedBms = device;
+        break;
+      }
+    }
+    if (recognizedBms != null && mounted) {
+      debugPrint('AUTO CONNECTING TO RECOGNIZED BMS: ${recognizedBms.platformName}');
+      await connectDevice(recognizedBms);
+    }
   }
 
   Future<void> connectDevice(BluetoothDevice device) async {
@@ -513,9 +565,11 @@ class _ConnectScreenState extends State<ConnectScreen>
     final (feedTitle, feedMessage) = switch (feedState) {
       RemoteFeedState.checking => (
         noNearbyScooter
-            ? 'No nearby scooter; checking server'
+            ? 'No nearby scooter; checking BLE and server'
             : 'Checking Scooby server',
-        'Scooby checks automatically for readings from the BMS-connected phone.',
+        noNearbyScooter
+            ? 'Scooby scans nearby Bluetooth devices every 2 minutes and checks for readings from the BMS-connected phone.'
+            : 'Scooby checks automatically for readings from the BMS-connected phone.',
       ),
       RemoteFeedState.waitingForPublisher => (
         'Waiting for the first battery reading',
