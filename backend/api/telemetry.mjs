@@ -74,6 +74,9 @@ export async function POST(request) {
   }
 
   const payload = {
+    senderName: typeof body.senderName === 'string' && body.senderName.trim()
+      ? body.senderName.trim().slice(0, 64)
+      : 'Scooby rider',
     battery: {
       voltage: body.battery.voltage,
       current: body.battery.current,

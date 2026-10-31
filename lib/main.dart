@@ -1,16 +1,16 @@
 import 'dart:async';
 
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:scooby/providers/navigation_provider.dart';
-import 'package:scooby/screens/connect/connect_screen.dart';
 import 'package:scooby/services/notification_service.dart';
 
-import 'providers/battery_provider.dart';
 import 'providers/theme_provider.dart';
 import 'theme/app_colors.dart';
 
+import 'firebase_options.dart';
+import 'screens/auth/auth_gate.dart';
 import 'screens/home/home_screen.dart';
 import 'screens/profile/profile_screen.dart';
 import 'widgets/connection_badge.dart';
@@ -19,6 +19,7 @@ import 'widgets/app_update_banner.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   await NotificationService.instance.initialize();
 
   // IMMERSIVE PREMIUM UI CONFIGURATION
@@ -36,11 +37,7 @@ void main() async {
 
   runApp(
     MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => BatteryProvider()),
-        ChangeNotifierProvider(create: (_) => ThemeProvider()),
-        ChangeNotifierProvider(create: (_) => NavigationProvider()),
-      ],
+      providers: [ChangeNotifierProvider(create: (_) => ThemeProvider())],
       child: const Scooby(),
     ),
   );
@@ -100,10 +97,7 @@ class Scooby extends StatelessWidget {
           child: child ?? const SizedBox.shrink(),
         );
       },
-      home: ConnectScreen(),
-      //home: NavigateScreen(),
-      //home: HomeScreen(),
-      //home: ProfileScreen(),
+      home: const AuthGate(),
     );
   }
 }

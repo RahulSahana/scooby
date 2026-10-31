@@ -25,11 +25,13 @@ class RemoteTelemetrySnapshot {
     required this.battery,
     required this.receivedAt,
     this.location,
+    this.senderName,
   });
 
   final Map<String, dynamic> battery;
   final DateTime receivedAt;
   final Map<String, dynamic>? location;
+  final String? senderName;
 }
 
 class RemoteTelemetryService {
@@ -97,8 +99,7 @@ class RemoteTelemetryService {
     // Older builds used the BMS Bluetooth address as the server publisher ID.
     // That made every phone share one server record but generate a different
     // token, so all but the first phone were rejected with HTTP 403.
-    if (existing != null &&
-        existing.deviceId != _legacyDeviceId(bleDeviceId)) {
+    if (existing != null && existing.deviceId != _legacyDeviceId(bleDeviceId)) {
       return existing;
     }
 
@@ -131,6 +132,7 @@ class RemoteTelemetryService {
     required ScooterPairing pairing,
     required BatteryData battery,
     Map<String, double>? location,
+    required String senderName,
   }) async {
     final response = await _client
         .post(
@@ -143,6 +145,7 @@ class RemoteTelemetryService {
             'deviceId': pairing.deviceId,
             'publisherId':
                 'phone_${_deviceIdForPublisher(pairing.bleDeviceId)}',
+            'senderName': senderName,
             'observedAt': DateTime.now().toUtc().toIso8601String(),
             'battery': {
               'voltage': battery.voltage,
@@ -221,6 +224,9 @@ class RemoteTelemetryService {
       receivedAt: receivedAt.toLocal(),
       location: rawLocation is Map
           ? Map<String, dynamic>.from(rawLocation)
+          : null,
+      senderName: payload['senderName'] is String
+          ? (payload['senderName'] as String).trim()
           : null,
     );
   }

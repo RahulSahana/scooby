@@ -12,10 +12,10 @@ class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
   Color _getTemperatureColor(double temp, ColorScheme colors) {
-    if (temp >= 45) return colors.error;      // Critical
-    if (temp >= 35) return Colors.orange;   // Warm
-    if (temp <= 15) return colors.secondary;  // Cold
-    return colors.primary;                    // Normal
+    if (temp >= 45) return colors.error; // Critical
+    if (temp >= 35) return Colors.orange; // Warm
+    if (temp <= 15) return colors.secondary; // Cold
+    return colors.primary; // Normal
   }
 
   Color _getBatteryColor(num soc, ColorScheme colors) {
@@ -24,12 +24,11 @@ class HomeScreen extends StatelessWidget {
     return colors.error;
   }
 
-  Color _getSohColor(num soh,ColorScheme colors) {
-    if (soh >= 90) return colors.primary;           // Excellent / Optimal
-    if (soh >= 80) return colors.tertiary;          // Fair / Degrading
-    return colors.error;                            // Poor / Replace soon
+  Color _getSohColor(num soh, ColorScheme colors) {
+    if (soh >= 90) return colors.primary; // Excellent / Optimal
+    if (soh >= 80) return colors.tertiary; // Fair / Degrading
+    return colors.error; // Poor / Replace soon
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -38,11 +37,15 @@ class HomeScreen extends StatelessWidget {
     final theme = Theme.of(context).extension<AppColors>()!;
     final colors = Theme.of(context).colorScheme;
     final lastSendTime = batteryProvider.remoteTelemetryReceivedAt;
+    final senderName = batteryProvider.remoteTelemetrySenderName?.trim();
     final lastSendTimeLabel = lastSendTime == null
         ? null
-        : MaterialLocalizations.of(context).formatTimeOfDay(
-            TimeOfDay.fromDateTime(lastSendTime.toLocal()),
-          );
+        : MaterialLocalizations.of(
+            context,
+          ).formatTimeOfDay(TimeOfDay.fromDateTime(lastSendTime.toLocal()));
+    final lastSendDescription = lastSendTimeLabel == null
+        ? null
+        : 'Last data sent at $lastSendTimeLabel${senderName == null || senderName.isEmpty ? '' : ' by $senderName'}';
 
     String powerLabel;
 
@@ -54,209 +57,222 @@ class HomeScreen extends StatelessWidget {
       powerLabel = 'Power';
     }
 
-
-
     return Scaffold(
       backgroundColor: theme.background,
-            body: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: SingleChildScrollView(
-                child: Column(
-                  //crossAxisAlignment: CrossAxisAlignment.stretch,
-                  mainAxisAlignment: MainAxisAlignment.start,
+      body: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+        child: SingleChildScrollView(
+          child: Column(
+            //crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisAlignment: MainAxisAlignment.start,
+            children: [
+              // 1. THE SCOOTER MEDIA LAYER
+              Center(
+                child: battery.current <= -0.6
+                    ? _MotionScooterDisplay(
+                        imagePath: 'lib/assets/scooty.png',
+                        height: 250,
+                      )
+                    : Image.asset('lib/assets/scooty.png', height: 250),
+              ),
+
+              // ===================================================
+              // BATTERY ARC
+              // ===================================================
+              BatteryArc(percentage: battery.soc, range: battery.range.toInt()),
+
+              const SizedBox(height: 20),
+
+              // ===================================================
+              // CONNECTION STATUS
+              // ===================================================
+              const ConnectionBadge(),
+
+              if (lastSendDescription != null) ...[
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // 1. THE SCOOTER MEDIA LAYER
-                    Center(
-                      child: battery.current <= -0.6 ? _MotionScooterDisplay(imagePath: 'lib/assets/scooty.png', height: 250) : Image.asset('lib/assets/scooty.png', height: 250),
+                    Icon(
+                      Icons.cloud_upload_outlined,
+                      size: 14,
+                      color: colors.onSurfaceVariant,
                     ),
-
-                    // ===================================================
-                    // BATTERY ARC
-                    // ===================================================
-                    BatteryArc(
-                      percentage: battery.soc,
-                      range: battery.range.toInt(),
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    // ===================================================
-                    // CONNECTION STATUS
-                    // ===================================================
-                    const ConnectionBadge(),
-
-                    if (lastSendTimeLabel != null) ...[
-                      const SizedBox(height: 8),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.cloud_upload_outlined,
-                            size: 14,
-                            color: colors.onSurfaceVariant,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            'Last data sent at $lastSendTimeLabel',
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(color: colors.onSurfaceVariant),
-                          ),
-                        ],
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        lastSendDescription,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: colors.onSurfaceVariant,
+                        ),
                       ),
-                    ],
+                    ),
+                  ],
+                ),
+              ],
 
-                    const SizedBox(height: 20),
+              const SizedBox(height: 20),
 
-                    // ===================================================
-                    // VITAL STATS (Unbreakable Layout)
-                    // ===================================================
+              // ===================================================
+              // VITAL STATS (Unbreakable Layout)
+              // ===================================================
+              const SizedBox(height: 20),
+              Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'BATTERY VITALS',
+                      style: TextStyle(
+                        color: Color(0xFF9B9B9B),
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
 
-                    const SizedBox(height: 20),
-                    Padding(
-                      padding: const EdgeInsets.all(8.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'BATTERY VITALS',
-                            style: TextStyle(
-                              color: Color(0xFF9B9B9B),
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 1.2,
+                    // Data Row 0
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _LightInfoCard(
+                            title: 'VOLTAGE',
+                            value: '${battery.voltage.toStringAsFixed(1)} V',
+                            icon: Icons.bolt,
+                            iconColor: theme.warningAmber,
+                            cornerImageAsset: 'lib/assets/voltage.png',
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: _LightInfoCard(
+                            title: 'BATTERY',
+                            value: '${battery.soc} %',
+                            icon: Icons.battery_full,
+                            iconColor: _getBatteryColor(battery.soc, colors),
+                            imageColor: _getBatteryColor(battery.soc, colors),
+                            cornerImageAsset: 'lib/assets/battery.png',
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Data Row 0
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _LightInfoCard(
+                            title: powerLabel,
+                            value:
+                                '${battery.power.abs().toStringAsFixed(0)} W',
+                            icon: Icons.flash_on,
+                            iconColor: Colors.amber,
+                            // No imageColor passed! It will use the original asset colors.
+                            cornerImageAsset: "lib/assets/power.png",
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: _LightInfoCard(
+                            title: 'Current',
+                            value:
+                                '${battery.current.abs().toStringAsFixed(1)} A',
+                            icon: Icons.electric_meter,
+                            iconColor: Colors.blueAccent,
+                            // No imageColor passed!
+                            cornerImageAsset: 'lib/assets/current.png',
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // Data Row 2
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _LightInfoCard(
+                            title: 'Temperature',
+                            value: '${battery.temperature}°C',
+                            icon: Icons.thermostat_outlined,
+                            // DYNAMIC COLORS APPLIED HERE
+                            iconColor: _getTemperatureColor(
+                              battery.temperature,
+                              colors,
                             ),
+                            imageColor: _getTemperatureColor(
+                              battery.temperature,
+                              colors,
+                            ),
+                            cornerImageAsset: 'lib/assets/temperature.png',
                           ),
-                          const SizedBox(height: 16),
-
-                          // Data Row 0
-                          Row(
-                            children: [
-                              Expanded(
-                                child: _LightInfoCard(
-                                  title: 'VOLTAGE',
-                                  value: '${battery.voltage.toStringAsFixed(1)} V',
-                                  icon: Icons.bolt,
-                                  iconColor: theme.warningAmber,
-                                  cornerImageAsset: 'lib/assets/voltage.png',
-                                ),
-                              ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: _LightInfoCard(
-                                  title: 'BATTERY',
-                                  value: '${battery.soc} %',
-                                  icon: Icons.battery_full,
-                                  iconColor: _getBatteryColor(battery.soc, colors),
-                                  imageColor: _getBatteryColor(battery.soc, colors),
-                                  cornerImageAsset: 'lib/assets/battery.png',
-                                ),
-                              ),
-                            ],
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: _LightInfoCard(
+                            title: 'Charge Cycles',
+                            value: '${battery.cycleCount}',
+                            icon: Icons.autorenew,
+                            iconColor: const Color(0xFF00BFFF),
+                            imageColor: const Color(0xFF00BFFF),
+                            cornerImageAsset: 'lib/assets/cycle.png',
                           ),
-                          const SizedBox(height: 16),
-
-                          // Data Row 0
-                          Row(
-                            children: [
-
-                              Expanded(
-                                child: _LightInfoCard(
-                                  title: powerLabel,
-                                  value: '${battery.power.abs().toStringAsFixed(0)} W',
-                                  icon: Icons.flash_on,
-                                  iconColor: Colors.amber,
-                                  // No imageColor passed! It will use the original asset colors.
-                                  cornerImageAsset: "lib/assets/power.png",
-                                ),
-                              ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: _LightInfoCard(
-                                  title: 'Current',
-                                  value: '${battery.current.abs().toStringAsFixed(1)} A',
-                                  icon: Icons.electric_meter,
-                                  iconColor: Colors.blueAccent,
-                                  // No imageColor passed!
-                                  cornerImageAsset: 'lib/assets/current.png',
-                                ),
-                              ),
-                            ],
-                          ),
-
-                          const SizedBox(height: 16),
-
-                          // Data Row 2
-                          Row(
-                            children: [
-                              Expanded(
-                                child: _LightInfoCard(
-                                  title: 'Temperature',
-                                  value: '${battery.temperature}°C',
-                                  icon: Icons.thermostat_outlined,
-                                  // DYNAMIC COLORS APPLIED HERE
-                                  iconColor: _getTemperatureColor(battery.temperature,colors),
-                                  imageColor: _getTemperatureColor(battery.temperature,colors),
-                                  cornerImageAsset: 'lib/assets/temperature.png',
-                                ),
-                              ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: _LightInfoCard(
-                                  title: 'Charge Cycles',
-                                  value: '${battery.cycleCount}',
-                                  icon: Icons.autorenew,
-                                  iconColor: const Color(0xFF00BFFF),
-                                  imageColor: const Color(0xFF00BFFF),
-                                  cornerImageAsset: 'lib/assets/cycle.png',
-                                ),
-                              ),
-                            ],
-                          ),
-
-                          const SizedBox(height: 16),
-
-                          // Data Row 3
-                          Row(
-                            children: [
-                              Expanded(
-                                child: _LightInfoCard(
-                                  title: 'Health (SOH)',
-                                  value: '${battery.soh.toStringAsFixed(0)}%',
-                                  icon: Icons.health_and_safety,
-                                  // DYNAMIC COLORS APPLIED HERE
-                                  iconColor: _getSohColor(battery.soh,colors),
-                                  imageColor: _getSohColor(battery.soh,colors),
-                                  cornerImageAsset: 'lib/assets/charge_ev_trans.png',
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-//====================================================
-/// Charging Info Card
-//====================================================
-                          _ChargingInfoCard(
-                            isCharging: battery.current > 0,
-                            socPercent: battery.soc.toDouble(),
-                            currentAmps: battery.current.abs(),
-                            powerWatts: battery.power.abs(),
-                            packCapacityAh: 30.0, // TODO: replace with your battery's actual Ah capacity
-                          ),
-
-                          // Extra padding for the bottom navigation bar
-                          const SizedBox(height: 40),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
 
-                    const SizedBox(height: 30),
+                    const SizedBox(height: 16),
+
+                    // Data Row 3
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _LightInfoCard(
+                            title: 'Health (SOH)',
+                            value: '${battery.soh.toStringAsFixed(0)}%',
+                            icon: Icons.health_and_safety,
+                            // DYNAMIC COLORS APPLIED HERE
+                            iconColor: _getSohColor(battery.soh, colors),
+                            imageColor: _getSohColor(battery.soh, colors),
+                            cornerImageAsset: 'lib/assets/charge_ev_trans.png',
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    //====================================================
+                    /// Charging Info Card
+                    //====================================================
+                    _ChargingInfoCard(
+                      isCharging: battery.current > 0,
+                      socPercent: battery.soc.toDouble(),
+                      currentAmps: battery.current.abs(),
+                      powerWatts: battery.power.abs(),
+                      packCapacityAh:
+                          30.0, // TODO: replace with your battery's actual Ah capacity
+                    ),
+
+                    // Extra padding for the bottom navigation bar
+                    const SizedBox(height: 40),
                   ],
                 ),
               ),
-            ),
-      );
-    }
+
+              const SizedBox(height: 30),
+            ],
+          ),
+        ),
+      ),
+    );
   }
+}
 
 // =======================================================
 // LIGHT THEME INFO CARD (Bulletproof Version)
@@ -335,11 +351,7 @@ class _LightInfoCard extends StatelessWidget {
                       color: effectiveIconColor.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(14),
                     ),
-                    child: Icon(
-                      icon,
-                      color: effectiveIconColor,
-                      size: 24,
-                    ),
+                    child: Icon(icon, color: effectiveIconColor, size: 24),
                   ),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -488,7 +500,11 @@ class _ChargingInfoCardState extends State<_ChargingInfoCard>
                 animation: _animationController,
                 builder: (context, child) {
                   final scale = widget.isCharging
-                      ? 1 + (math.sin(_animationController.value * math.pi * 2) * 0.08)
+                      ? 1 +
+                            (math.sin(
+                                  _animationController.value * math.pi * 2,
+                                ) *
+                                0.08)
                       : 1.0;
 
                   return Transform.scale(
@@ -639,16 +655,14 @@ class _MotionScooterDisplay extends StatefulWidget {
   final String imagePath;
   final double height;
 
-  const _MotionScooterDisplay({
-    required this.imagePath,
-    this.height = 250,
-  });
+  const _MotionScooterDisplay({required this.imagePath, this.height = 250});
 
   @override
   State<_MotionScooterDisplay> createState() => _MotionScooterDisplayState();
 }
 
-class _MotionScooterDisplayState extends State<_MotionScooterDisplay> with SingleTickerProviderStateMixin {
+class _MotionScooterDisplayState extends State<_MotionScooterDisplay>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
 
   @override
@@ -710,26 +724,82 @@ class _SpeedWindPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = Colors.grey.withValues(alpha: 0.3) // Soft grey wind
+      ..color = Colors.grey
+          .withValues(alpha: 0.3) // Soft grey wind
       ..strokeWidth = 3.0
       ..strokeCap = StrokeCap.round;
 
     // We draw 6 distinct "wind lines" at different heights, speeds, and lengths
     // Y-Offset (0.0 to 1.0) | Length | Speed Multiplier | Start X Offset
-    _drawWindLine(canvas, size, paint, y: 0.15, length: 60, speed: 1.2, startX: 0.2);
-    _drawWindLine(canvas, size, paint, y: 0.35, length: 100, speed: 1.5, startX: 0.7);
-    _drawWindLine(canvas, size, paint, y: 0.50, length: 40, speed: 0.8, startX: 0.4);
-    _drawWindLine(canvas, size, paint, y: 0.65, length: 80, speed: 1.3, startX: 0.1);
-    _drawWindLine(canvas, size, paint, y: 0.85, length: 50, speed: 1.1, startX: 0.8);
-    _drawWindLine(canvas, size, paint, y: 0.95, length: 120, speed: 1.6, startX: 0.5);
+    _drawWindLine(
+      canvas,
+      size,
+      paint,
+      y: 0.15,
+      length: 60,
+      speed: 1.2,
+      startX: 0.2,
+    );
+    _drawWindLine(
+      canvas,
+      size,
+      paint,
+      y: 0.35,
+      length: 100,
+      speed: 1.5,
+      startX: 0.7,
+    );
+    _drawWindLine(
+      canvas,
+      size,
+      paint,
+      y: 0.50,
+      length: 40,
+      speed: 0.8,
+      startX: 0.4,
+    );
+    _drawWindLine(
+      canvas,
+      size,
+      paint,
+      y: 0.65,
+      length: 80,
+      speed: 1.3,
+      startX: 0.1,
+    );
+    _drawWindLine(
+      canvas,
+      size,
+      paint,
+      y: 0.85,
+      length: 50,
+      speed: 1.1,
+      startX: 0.8,
+    );
+    _drawWindLine(
+      canvas,
+      size,
+      paint,
+      y: 0.95,
+      length: 120,
+      speed: 1.6,
+      startX: 0.5,
+    );
   }
 
-  void _drawWindLine(Canvas canvas, Size size, Paint paint, {
-    required double y, required double length, required double speed, required double startX,
+  void _drawWindLine(
+    Canvas canvas,
+    Size size,
+    Paint paint, {
+    required double y,
+    required double length,
+    required double speed,
+    required double startX,
   }) {
     // Calculates the X position moving right to left
     double normalizedX = (startX - (animationValue * speed)) % 1.0;
-    if (normalizedX < 0) normalizedX += 1.0; // Wraps around the screen perfectly
+    if (normalizedX < 0)
+      normalizedX += 1.0; // Wraps around the screen perfectly
 
     double xPos = normalizedX * size.width;
     double yPos = y * size.height;
@@ -746,6 +816,7 @@ class _SpeedWindPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _SpeedWindPainter oldDelegate) {
-    return oldDelegate.animationValue != animationValue; // Only repaint when animation moves
+    return oldDelegate.animationValue !=
+        animationValue; // Only repaint when animation moves
   }
 }

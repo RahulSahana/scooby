@@ -2,12 +2,14 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../providers/battery_provider.dart';
+import '../../services/background_sync_service.dart';
 import '../../providers/theme_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/notification.dart';
@@ -64,7 +66,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (!mounted) return;
 
     setState(() {
-      _userName = prefs.getString('profile_name') ?? 'Rahul Sahana';
+      _userName =
+          prefs.getString('profile_name') ??
+          FirebaseAuth.instance.currentUser?.displayName ??
+          'Scooby rider';
       _userDesc =
           prefs.getString('profile_desc') ?? 'West Bengal • EV Developer';
       _userAvatar = prefs.getString('profile_avatar') ?? '🤖';
@@ -78,6 +83,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await prefs.setString('profile_name', name);
     await prefs.setString('profile_desc', desc);
     await prefs.setString('profile_avatar', avatar);
+    await FirebaseAuth.instance.currentUser?.updateDisplayName(name);
 
     if (!mounted) return;
 
@@ -86,6 +92,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _userDesc = desc;
       _userAvatar = avatar;
     });
+  }
+
+  Future<void> _signOut() async {
+    await context.read<BatteryProvider>().bleService.disconnect();
+    await BackgroundSyncService.stop();
+    await FirebaseAuth.instance.signOut();
   }
 
   String _formatFirstOnDate(String date) {
@@ -490,6 +502,50 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   onPressed: _showEditProfileDialog,
                 ),
               ],
+            ),
+            const SizedBox(height: 28),
+            _sectionLabel('Account', colors),
+            _panel(
+              colors: colors,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.account_circle_outlined,
+                        color: scheme.primary,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              FirebaseAuth.instance.currentUser?.displayName ??
+                                  _userName,
+                              style: TextStyle(
+                                color: colors.primaryText,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            Text(
+                              FirebaseAuth.instance.currentUser?.email ?? '',
+                              style: TextStyle(color: colors.secondaryText),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  OutlinedButton.icon(
+                    onPressed: _signOut,
+                    icon: const Icon(Icons.logout),
+                    label: const Text('Sign out'),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 28),
             //==============================================================

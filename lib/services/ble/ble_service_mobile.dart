@@ -136,6 +136,7 @@ class BleService extends BleServiceBase {
 
   @override
   Future<bool> autoConnect() async {
+    StreamSubscription<List<ScanResult>>? scanSubscription;
     try {
       final savedId = batteryProvider.primaryScooterId;
       if (savedId == null) return false;
@@ -149,52 +150,71 @@ class BleService extends BleServiceBase {
         }
       }
 
-      // Subscribe before starting the scan so the first advertisement batch
-      // cannot arrive before the listener is attached.
-      final scanResults = FlutterBluePlus.onScanResults;
-      await FlutterBluePlus.startScan(
-        timeout: const Duration(seconds: 8),
-        androidScanMode: AndroidScanMode.lowLatency,
-      );
-      await for (final results in scanResults) {
+      // Subscribe before starting the scan. The results stream itself stays
+      // open after scanning stops, so wait on a bounded future instead of
+      // awaiting the stream to close.
+      final matchedDevice = Completer<BluetoothDevice?>();
+      scanSubscription = FlutterBluePlus.onScanResults.listen((results) {
+        if (matchedDevice.isCompleted) return;
         BluetoothDevice? candidate;
-        for (ScanResult r in results) {
-          if (r.device.remoteId.str == savedId) {
-            candidate = r.device;
+        for (final result in results) {
+          if (result.device.remoteId.str == savedId) {
+            candidate = result.device;
             break;
           }
         }
-
-        // Some Android phones expose a different BLE address after the BMS
-        // has been reset. Fall back only to the scooter's known advertised
-        // names, never to arbitrary nearby Bluetooth devices.
         candidate ??= _knownScooterFrom(results);
-        if (candidate != null) {
-          final foundNewAddress = candidate.remoteId.str != savedId;
-          if (foundNewAddress) {
-            debugPrint(
-              'MOBILE BLE: FOUND KNOWN SCOOTER NAME '
-              '${candidate.platformName.isNotEmpty ? candidate.platformName : candidate.advName}; '
-              'will update saved BLE address after connection',
-            );
-          }
-          await FlutterBluePlus.stopScan();
-          await connect(candidate);
-          if (foundNewAddress) {
-            await batteryProvider.setPrimaryScooter(candidate.remoteId.str);
-          }
-          return true;
-        }
+        if (candidate != null) matchedDevice.complete(candidate);
+      });
 
-        if (!FlutterBluePlus.isScanningNow) break;
+      await FlutterBluePlus.startScan(
+        // Android stops unfiltered scans when the screen turns off. Restrict
+        // this retry scan to the saved BMS address or known BMS names so
+        // background reconnect attempts can continue efficiently.
+        withRemoteIds: [savedId],
+        withNames: const ['Scooty', 'JK-BMS', 'JKBMS'],
+        timeout: const Duration(seconds: 8),
+        androidScanMode: AndroidScanMode.lowLatency,
+      );
+      final candidate = await matchedDevice.future.timeout(
+        const Duration(seconds: 9),
+        onTimeout: () => null,
+      );
+      await scanSubscription.cancel();
+      scanSubscription = null;
+      if (FlutterBluePlus.isScanningNow) await FlutterBluePlus.stopScan();
+
+      if (candidate == null) {
+        debugPrint('MOBILE BLE: AUTO SCAN FOUND NO MATCHING SCOOTER');
+        batteryProvider.setConnectingState(false);
+        return false;
       }
-      debugPrint('MOBILE BLE: AUTO SCAN FOUND NO MATCHING SCOOTER');
-      batteryProvider.setConnectingState(false);
-      return false;
+
+      // Some Android phones expose a different BLE address after the BMS
+      // has been reset. Fall back only to the scooter's known advertised
+      // names, never to arbitrary nearby Bluetooth devices.
+      final foundNewAddress = candidate.remoteId.str != savedId;
+      if (foundNewAddress) {
+        debugPrint(
+          'MOBILE BLE: FOUND KNOWN SCOOTER NAME '
+          '${candidate.platformName.isNotEmpty ? candidate.platformName : candidate.advName}; '
+          'will update saved BLE address after connection',
+        );
+      }
+      await connect(candidate);
+      if (foundNewAddress) {
+        await batteryProvider.setPrimaryScooter(candidate.remoteId.str);
+      }
+      return true;
     } catch (error) {
       debugPrint('MOBILE BLE: AUTO CONNECT FAILED $error');
       batteryProvider.setConnectingState(false);
       return false;
+    } finally {
+      await scanSubscription?.cancel();
+      if (FlutterBluePlus.isScanningNow) {
+        await FlutterBluePlus.stopScan();
+      }
     }
   }
 

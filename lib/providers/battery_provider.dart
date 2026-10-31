@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -41,6 +42,7 @@ class BatteryProvider extends ChangeNotifier {
   double? _scooterLatitude;
   double? _scooterLongitude;
   DateTime? _remoteTelemetryReceivedAt;
+  String? _remoteTelemetrySenderName;
 
   Future<void> initializeRangeEstimator() async {
     await _rangeEstimator.loadSavedEstimate();
@@ -73,6 +75,7 @@ class BatteryProvider extends ChangeNotifier {
   double? get scooterLatitude => _scooterLatitude;
   double? get scooterLongitude => _scooterLongitude;
   DateTime? get remoteTelemetryReceivedAt => _remoteTelemetryReceivedAt;
+  String? get remoteTelemetrySenderName => _remoteTelemetrySenderName;
   String get telemetrySourceLabel => _isConnected
       ? 'Bluetooth'
       : (_isUsingRemoteTelemetry ? 'Remote' : 'Disconnected');
@@ -407,12 +410,19 @@ class BatteryProvider extends ChangeNotifier {
       location ??= _scooterLatitude != null && _scooterLongitude != null
           ? {'latitude': _scooterLatitude!, 'longitude': _scooterLongitude!}
           : null;
+      final accountName = FirebaseAuth.instance.currentUser?.displayName
+          ?.trim();
+      final senderName = accountName == null || accountName.isEmpty
+          ? 'Scooby rider'
+          : accountName;
       await remoteTelemetryService.publishLatest(
         pairing: pairing,
         battery: _batteryData,
         location: location,
+        senderName: senderName,
       );
       _remoteTelemetryReceivedAt = DateTime.now();
+      _remoteTelemetrySenderName = senderName;
     } catch (error) {
       debugPrint('Scooby remote telemetry upload failed: $error');
     }
@@ -489,6 +499,7 @@ class BatteryProvider extends ChangeNotifier {
         isConnected: false,
       );
       _remoteTelemetryReceivedAt = snapshot.receivedAt;
+      _remoteTelemetrySenderName = snapshot.senderName;
       final location = snapshot.location;
       final latitude = location?['latitude'];
       final longitude = location?['longitude'];
