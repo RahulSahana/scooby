@@ -236,23 +236,32 @@ class _ConnectScreenState extends State<ConnectScreen>
       _startStatusTimer();
     });
 
-    try {
-      await _batteryProvider.bleService.stopScan();
-      await _batteryProvider.bleService.connect(device);
-      // NOTE: We don't call Navigator.push() here anymore!
-      // _onBatteryProviderChanged will automatically detect the success
-      // and push the screen for us.
-    } catch (e) {
-      if (!mounted) return;
-      _stopStatusTimer();
-      setState(() => isConnecting = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          backgroundColor: Colors.red,
-          content: Text("Connection Failed"),
-        ),
-      );
+    for (var attempt = 1; attempt <= 3; attempt++) {
+      try {
+        await _batteryProvider.bleService.stopScan();
+        await _batteryProvider.bleService.connect(device);
+        // _onBatteryProviderChanged handles the successful navigation.
+        return;
+      } catch (error) {
+        debugPrint('BLE connection attempt $attempt/3 failed: $error');
+        if (attempt < 3) {
+          await Future<void>.delayed(Duration(seconds: attempt));
+        }
+      }
     }
+
+    if (!mounted) return;
+    _batteryProvider.setConnectingState(false);
+    _stopStatusTimer();
+    setState(() => isConnecting = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: Colors.red,
+        content: Text(
+          'Could not connect after 3 tries. Keep the BMS nearby and try again.',
+        ),
+      ),
+    );
   }
 
   // =========================================================
@@ -500,6 +509,31 @@ class _ConnectScreenState extends State<ConnectScreen>
 
   Widget _buildRemoteStatusCard({bool noNearbyScooter = false}) {
     final isRemote = _batteryProvider.isUsingRemoteTelemetry;
+    final feedState = _batteryProvider.remoteFeedState;
+    final (feedTitle, feedMessage) = switch (feedState) {
+      RemoteFeedState.checking => (
+        noNearbyScooter
+            ? 'No nearby scooter; checking server'
+            : 'Checking Scooby server',
+        'Scooby checks automatically for readings from the BMS-connected phone.',
+      ),
+      RemoteFeedState.waitingForPublisher => (
+        'Waiting for the first battery reading',
+        'The server is reachable, but no phone has uploaded telemetry yet. Connect a phone to the JK-BMS and keep Scooby open with internet access.',
+      ),
+      RemoteFeedState.live => (
+        'Scooby server connected',
+        'Live battery telemetry is arriving from the BMS-connected phone.',
+      ),
+      RemoteFeedState.stale => (
+        'Server reading is out of date',
+        'A reading exists, but it is older than 6 minutes. The BMS-connected phone needs to reconnect and upload a fresh reading.',
+      ),
+      RemoteFeedState.unavailable => (
+        'Scooby server could not be reached',
+        'Check the phone’s internet connection and the Vercel deployment, then Scooby will retry automatically.',
+      ),
+    };
     return Container(
       padding: const EdgeInsets.all(16),
       margin: const EdgeInsets.only(bottom: 12),
@@ -518,20 +552,26 @@ class _ConnectScreenState extends State<ConnectScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            isRemote
-                ? 'Scooby server connected'
-                : (noNearbyScooter
-                      ? 'No nearby scooter found'
-                      : 'Checking Scooby server automatically'),
+            isRemote ? 'Scooby server connected' : feedTitle,
             style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 6),
           Text(
-            isRemote
-                ? 'Live battery telemetry is arriving from the BMS-connected phone.'
-                : 'Scooby checks for live readings from the phone connected to the BMS. No setup is needed.',
+            feedMessage,
             style: const TextStyle(fontSize: 13, color: Colors.black54),
           ),
+          if (feedState == RemoteFeedState.unavailable) ...[
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: () =>
+                    unawaited(_batteryProvider.refreshRemoteTelemetry()),
+                icon: const Icon(Icons.refresh, size: 18),
+                label: const Text('Check again'),
+              ),
+            ),
+          ],
           const SizedBox(height: 8),
           const Text(
             'This feed is public and includes battery telemetry and scooter location.',

@@ -16,6 +16,7 @@ function keyFor(deviceId) {
 }
 
 const publicDeviceKey = 'scooby:public:device';
+const publicPublisherKey = 'scooby:public:publisher';
 const publicLatestKey = 'scooby:public:latest';
 
 function hashAccessToken(token) {
@@ -78,14 +79,35 @@ export async function publishLatest({
     await redis.set(key, record);
   }
 
-  let publicDeviceId = await redis.get(publicDeviceKey);
-  if (publicDeviceId == null) {
-    const claimed = await redis.set(publicDeviceKey, deviceId, { nx: true });
-    publicDeviceId = claimed === 'OK'
-      ? deviceId
-      : await redis.get(publicDeviceKey);
+  let publicPublisherId = await redis.get(publicPublisherKey);
+  if (publicPublisherId == null) {
+    // Migrate the original single-phone feed owner without interrupting it.
+    const legacyDeviceId = await redis.get(publicDeviceKey);
+    if (typeof legacyDeviceId === 'string') {
+      const legacyRecord = await getRecord(redis, keyFor(legacyDeviceId));
+      if (typeof legacyRecord?.publisherId === 'string') {
+        const claimed = await redis.set(
+          publicPublisherKey,
+          legacyRecord.publisherId,
+          { nx: true },
+        );
+        publicPublisherId = claimed === 'OK'
+          ? legacyRecord.publisherId
+          : await redis.get(publicPublisherKey);
+      }
+    }
   }
-  if (publicDeviceId === deviceId) {
+
+  if (publicPublisherId == null) {
+    const claimed = await redis.set(publicPublisherKey, publisherId, { nx: true });
+    publicPublisherId = claimed === 'OK'
+      ? publisherId
+      : await redis.get(publicPublisherKey);
+  }
+
+  // Multiple phones may publish for this same BMS, each with its own token.
+  // Only the publisher identity for this scooter can update the shared feed.
+  if (publicPublisherId === publisherId) {
     await redis.set(publicLatestKey, {
       payload,
       observedAt,

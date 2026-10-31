@@ -12,6 +12,8 @@ import '../services/notification_service.dart';
 import '../services/remote_telemetry_service.dart';
 import '../services/background_sync_service.dart';
 
+enum RemoteFeedState { checking, waitingForPublisher, live, stale, unavailable }
+
 class BatteryProvider extends ChangeNotifier {
   late BleService bleService;
   late final Future<void> garageReady;
@@ -33,6 +35,7 @@ class BatteryProvider extends ChangeNotifier {
   bool _hasLocalBmsFrame = false;
   bool _hasPublishedForConnection = false;
   bool _isUsingRemoteTelemetry = false;
+  RemoteFeedState _remoteFeedState = RemoteFeedState.checking;
   bool _locationPermissionPrompted = false;
   bool _backgroundServiceStarted = false;
   double? _scooterLatitude;
@@ -66,6 +69,7 @@ class BatteryProvider extends ChangeNotifier {
   bool get isConnected => _isConnected;
   bool get isConnecting => _isConnecting;
   bool get isUsingRemoteTelemetry => _isUsingRemoteTelemetry;
+  RemoteFeedState get remoteFeedState => _remoteFeedState;
   double? get scooterLatitude => _scooterLatitude;
   double? get scooterLongitude => _scooterLongitude;
   DateTime? get remoteTelemetryReceivedAt => _remoteTelemetryReceivedAt;
@@ -438,6 +442,8 @@ class BatteryProvider extends ChangeNotifier {
     );
   }
 
+  Future<void> refreshRemoteTelemetry() => _pollRemoteTelemetry();
+
   Future<void> _pollRemoteTelemetry() async {
     if (_isConnected) return;
 
@@ -445,6 +451,7 @@ class BatteryProvider extends ChangeNotifier {
       final snapshot = await remoteTelemetryService.fetchPublicLatest();
       if (snapshot == null) {
         _isUsingRemoteTelemetry = false;
+        _remoteFeedState = RemoteFeedState.waitingForPublisher;
         notifyListeners();
         return;
       }
@@ -492,10 +499,14 @@ class BatteryProvider extends ChangeNotifier {
       _isUsingRemoteTelemetry =
           DateTime.now().difference(snapshot.receivedAt) <=
           const Duration(minutes: 6);
+      _remoteFeedState = _isUsingRemoteTelemetry
+          ? RemoteFeedState.live
+          : RemoteFeedState.stale;
       notifyListeners();
     } catch (error) {
       debugPrint('Scooby remote telemetry fetch failed: $error');
       _isUsingRemoteTelemetry = false;
+      _remoteFeedState = RemoteFeedState.unavailable;
       notifyListeners();
     }
   }

@@ -21,7 +21,7 @@ This folder is a Vercel project for Scooby's small, latest-reading API. It store
 
 ## Public scooter feed
 
-The BMS-connected phone generates its publisher token locally and stores it in platform-secure storage. Each accepted publisher keeps its own private telemetry record. The first publisher claims the public-feed slot, and later reads from any Scooby install return that publisher's latest snapshot. Remote phones need no pairing action or account.
+Each phone generates a separate server device ID and token locally and stores them in platform-secure storage. This lets more than one phone publish for the same BMS without copying tokens between phones. The server ties the shared feed to the BMS publisher identity and serves its latest accepted reading to Scooby installs. Remote-reader phones need no pairing action or account.
 
 `observedAt` is sent by the phone, while `receivedAt` is assigned by the server; clients use the latter to decide whether a value is stale. Keep the two-minute publish/read cadence to limit Redis usage.
 

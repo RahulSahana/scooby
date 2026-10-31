@@ -49,10 +49,20 @@ class RemoteTelemetryService {
     return 'scooby.remote.$encodedId.$suffix';
   }
 
-  String _makeDeviceId(String bleDeviceId) {
+  String _legacyDeviceId(String bleDeviceId) {
     final normalized = bleDeviceId.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
     final candidate = 'scooby_$normalized';
     return candidate.length <= 80 ? candidate : candidate.substring(0, 80);
+  }
+
+  String _makeDeviceId(String bleDeviceId) {
+    final normalized = bleDeviceId.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
+    final suffix = _makeToken().substring(0, 12);
+    final maxBaseLength = 80 - 'scooby__'.length - suffix.length;
+    final base = normalized.length <= maxBaseLength
+        ? normalized
+        : normalized.substring(0, maxBaseLength);
+    return 'scooby_${base}_$suffix';
   }
 
   String _makeToken() {
@@ -84,7 +94,13 @@ class RemoteTelemetryService {
     String scooterName = 'Scooby scooter',
   }) async {
     final existing = await pairingFor(bleDeviceId);
-    if (existing != null) return existing;
+    // Older builds used the BMS Bluetooth address as the server publisher ID.
+    // That made every phone share one server record but generate a different
+    // token, so all but the first phone were rejected with HTTP 403.
+    if (existing != null &&
+        existing.deviceId != _legacyDeviceId(bleDeviceId)) {
+      return existing;
+    }
 
     final pairing = ScooterPairing(
       deviceId: _makeDeviceId(bleDeviceId),
