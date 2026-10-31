@@ -37,6 +37,12 @@ class HomeScreen extends StatelessWidget {
     final battery = batteryProvider.batteryData;
     final theme = Theme.of(context).extension<AppColors>()!;
     final colors = Theme.of(context).colorScheme;
+    final lastSendTime = batteryProvider.remoteTelemetryReceivedAt;
+    final lastSendTimeLabel = lastSendTime == null
+        ? null
+        : MaterialLocalizations.of(context).formatTimeOfDay(
+            TimeOfDay.fromDateTime(lastSendTime.toLocal()),
+          );
 
     String powerLabel;
 
@@ -78,6 +84,26 @@ class HomeScreen extends StatelessWidget {
                     // CONNECTION STATUS
                     // ===================================================
                     const ConnectionBadge(),
+
+                    if (lastSendTimeLabel != null) ...[
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.cloud_upload_outlined,
+                            size: 14,
+                            color: colors.onSurfaceVariant,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Last data sent at $lastSendTimeLabel',
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(color: colors.onSurfaceVariant),
+                          ),
+                        ],
+                      ),
+                    ],
 
                     const SizedBox(height: 20),
 

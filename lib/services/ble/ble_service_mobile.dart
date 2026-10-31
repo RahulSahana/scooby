@@ -149,26 +149,66 @@ class BleService extends BleServiceBase {
         }
       }
 
+      // Subscribe before starting the scan so the first advertisement batch
+      // cannot arrive before the listener is attached.
+      final scanResults = FlutterBluePlus.onScanResults;
       await FlutterBluePlus.startScan(
         timeout: const Duration(seconds: 8),
         androidScanMode: AndroidScanMode.lowLatency,
       );
-      await for (final results in FlutterBluePlus.onScanResults) {
+      await for (final results in scanResults) {
+        BluetoothDevice? candidate;
         for (ScanResult r in results) {
           if (r.device.remoteId.str == savedId) {
-            await FlutterBluePlus.stopScan();
-            await connect(r.device);
-            return true;
+            candidate = r.device;
+            break;
           }
         }
+
+        // Some Android phones expose a different BLE address after the BMS
+        // has been reset. Fall back only to the scooter's known advertised
+        // names, never to arbitrary nearby Bluetooth devices.
+        candidate ??= _knownScooterFrom(results);
+        if (candidate != null) {
+          final foundNewAddress = candidate.remoteId.str != savedId;
+          if (foundNewAddress) {
+            debugPrint(
+              'MOBILE BLE: FOUND KNOWN SCOOTER NAME '
+              '${candidate.platformName.isNotEmpty ? candidate.platformName : candidate.advName}; '
+              'will update saved BLE address after connection',
+            );
+          }
+          await FlutterBluePlus.stopScan();
+          await connect(candidate);
+          if (foundNewAddress) {
+            await batteryProvider.setPrimaryScooter(candidate.remoteId.str);
+          }
+          return true;
+        }
+
         if (!FlutterBluePlus.isScanningNow) break;
       }
+      debugPrint('MOBILE BLE: AUTO SCAN FOUND NO MATCHING SCOOTER');
       batteryProvider.setConnectingState(false);
       return false;
-    } catch (_) {
+    } catch (error) {
+      debugPrint('MOBILE BLE: AUTO CONNECT FAILED $error');
       batteryProvider.setConnectingState(false);
       return false;
     }
+  }
+
+  BluetoothDevice? _knownScooterFrom(List<ScanResult> results) {
+    for (final result in results) {
+      final names = [
+        result.device.platformName,
+        result.device.advName,
+      ].map((name) => name.trim().toLowerCase().replaceAll('-', ''));
+      if (names.any((name) => name == 'scooty' || name.contains('jkbms'))) {
+        return result.device;
+      }
+    }
+    return null;
   }
 
   @override
