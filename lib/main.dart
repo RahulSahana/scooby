@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -113,7 +115,7 @@ class MyHomePage extends StatefulWidget {
   State<MyHomePage> createState() => _MyHomePageState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
+class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
   late PageController _pageController;
   int _selectedIndex = 0;
 
@@ -126,11 +128,23 @@ class _MyHomePageState extends State<MyHomePage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _pageController = PageController(initialPage: _selectedIndex);
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      final batteryProvider = context.read<BatteryProvider>();
+      if (!batteryProvider.isConnected) {
+        unawaited(batteryProvider.refreshRemoteTelemetry());
+      }
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _pageController.dispose();
     super.dispose();
   }
@@ -147,6 +161,12 @@ class _MyHomePageState extends State<MyHomePage> {
     setState(() {
       _selectedIndex = index;
     });
+    if (index == 0) {
+      final batteryProvider = context.read<BatteryProvider>();
+      if (!batteryProvider.isConnected) {
+        unawaited(batteryProvider.refreshRemoteTelemetry());
+      }
+    }
   }
 
   @override

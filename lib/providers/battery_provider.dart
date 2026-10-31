@@ -347,7 +347,7 @@ class BatteryProvider extends ChangeNotifier {
   void _startBluetoothRetryTimer() {
     if (kIsWeb || _primaryScooterId == null || _isConnected) return;
     _bluetoothRetryTimer?.cancel();
-    _bluetoothRetryTimer = Timer.periodic(const Duration(minutes: 2), (
+    _bluetoothRetryTimer = Timer.periodic(const Duration(seconds: 10), (
       _,
     ) async {
       if (_isConnected || _isConnecting || _primaryScooterId == null) return;

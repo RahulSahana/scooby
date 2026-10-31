@@ -8,14 +8,14 @@ export async function GET() {
         { error: 'No Scooby telemetry has been published yet.' },
         {
           status: 404,
-          headers: { 'Cache-Control': 'public, s-maxage=10' },
+          headers: { 'Cache-Control': 'no-store' },
         },
       );
     }
 
     return Response.json(reading, {
       headers: {
-        'Cache-Control': 'public, s-maxage=10, stale-while-revalidate=30',
+        'Cache-Control': 'no-store',
       },
     });
   } catch (error) {

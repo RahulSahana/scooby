@@ -179,7 +179,15 @@ class RemoteTelemetryService {
 
   Future<RemoteTelemetrySnapshot?> fetchPublicLatest() async {
     final response = await _client
-        .get(_baseUri.resolve('/api/public-latest'))
+        .get(
+          _baseUri.resolve(
+            '/api/public-latest?t=${DateTime.now().microsecondsSinceEpoch}',
+          ),
+          headers: const {
+            'Cache-Control': 'no-cache, no-store',
+            'Pragma': 'no-cache',
+          },
+        )
         .timeout(const Duration(seconds: 12));
 
     if (response.statusCode == 404) return null;
