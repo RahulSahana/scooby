@@ -13,6 +13,7 @@ import '../../services/background_sync_service.dart';
 import '../../providers/theme_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/notification.dart';
+import '../auth/auth_screen.dart';
 
 const String latestReleaseUrl =
     'https://github.com/RahulSahana/scooby/releases/download/v3.1.0/Scooby.3.1.apk';
@@ -503,50 +504,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 28),
-            _sectionLabel('Account', colors),
-            _panel(
-              colors: colors,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.account_circle_outlined,
-                        color: scheme.primary,
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              FirebaseAuth.instance.currentUser?.displayName ??
-                                  _userName,
-                              style: TextStyle(
-                                color: colors.primaryText,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            Text(
-                              FirebaseAuth.instance.currentUser?.email ?? '',
-                              style: TextStyle(color: colors.secondaryText),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-                  OutlinedButton.icon(
-                    onPressed: _signOut,
-                    icon: const Icon(Icons.logout),
-                    label: const Text('Sign out'),
-                  ),
-                ],
-              ),
-            ),
+
             const SizedBox(height: 28),
             //==============================================================
             /// APPEARANCE
@@ -584,7 +542,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             //==============================================================
             const NotificationSettingsCard(),
             const SizedBox(height: 28),
-
+            //***************************************************
+            ///          CLOUD GARAGE
+            //***************************************************
             _sectionLabel('My Garage', colors),
             _panel(
               colors: colors,
@@ -630,6 +590,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
             const SizedBox(height: 28),
+            //***************************************************
+            ///          REMOTE TELEMETRY
+            //***************************************************
             _sectionLabel('Remote Telemetry', colors),
             _panel(
               colors: colors,
@@ -746,7 +709,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const SizedBox(height: 28),
 
             //==============================================================
-            //                         LATEST RELEASE
+            ///                         LATEST RELEASE
             //==============================================================
             _sectionLabel('Latest Release', colors),
             _panel(
@@ -862,7 +825,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
             const SizedBox(height: 28),
-
+            //***************************************************
+            ///          HARDWARE OVERRIDES
+            //***************************************************
             _sectionLabel('Hardware Overrides', colors),
             _panel(
               colors: colors,
@@ -930,6 +895,71 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
+              ),
+            ),
+            const SizedBox(height: 28),
+            //***************************************************
+            ///          ACCOUNTS MANAGER
+            //***************************************************
+            _sectionLabel('Account', colors),
+            _panel(
+              colors: colors,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        FirebaseAuth.instance.currentUser != null
+                            ? Icons.account_circle_outlined
+                            : Icons.no_accounts_outlined,
+                        color: scheme.primary,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              FirebaseAuth.instance.currentUser?.displayName ??
+                                  (FirebaseAuth.instance.currentUser != null
+                                      ? _userName
+                                      : 'Guest User'),
+                              style: TextStyle(
+                                color: colors.primaryText,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            Text(
+                              FirebaseAuth.instance.currentUser?.email ??
+                                  'Not signed in',
+                              style: TextStyle(color: colors.secondaryText),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  if (FirebaseAuth.instance.currentUser != null)
+                    OutlinedButton.icon(
+                      onPressed: _signOut,
+                      icon: const Icon(Icons.logout),
+                      label: const Text('Sign out'),
+                    )
+                  else
+                    FilledButton.icon(
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const AuthScreen(),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.login),
+                      label: const Text('Sign in / Register'),
+                    ),
+                ],
               ),
             ),
             const SizedBox(height: 24),

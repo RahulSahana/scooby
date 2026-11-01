@@ -23,13 +23,7 @@ class AuthGate extends StatelessWidget {
         }
         if (snapshot.data == null) return const AuthScreen();
 
-        return MultiProvider(
-          providers: [
-            ChangeNotifierProvider(create: (_) => BatteryProvider()),
-            ChangeNotifierProvider(create: (_) => NavigationProvider()),
-          ],
-          child: const ConnectScreen(),
-        );
+        return const ConnectScreen();
       },
     );
   }

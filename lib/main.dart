@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:scooby/services/notification_service.dart';
 
+import 'providers/battery_provider.dart';
+import 'providers/navigation_provider.dart';
 import 'providers/theme_provider.dart';
 import 'theme/app_colors.dart';
 
@@ -37,7 +39,11 @@ void main() async {
 
   runApp(
     MultiProvider(
-      providers: [ChangeNotifierProvider(create: (_) => ThemeProvider())],
+      providers: [
+        ChangeNotifierProvider(create: (_) => BatteryProvider()),
+        ChangeNotifierProvider(create: (_) => ThemeProvider()),
+        ChangeNotifierProvider(create: (_) => NavigationProvider()),
+      ],
       child: const Scooby(),
     ),
   );

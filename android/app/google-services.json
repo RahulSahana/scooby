@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "193673341582",
+    "project_id": "scooby-ce098",
+    "storage_bucket": "scooby-ce098.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:193673341582:android:ab60b0ea5b7cf6d5dbf7df",
+        "android_client_info": {
+          "package_name": "com.example.scooby"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "193673341582-vg5mnta6v4fh89pt4e6urh45d60bqiuv.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.scooby",
+            "certificate_hash": "0eadd4961a92fa3d289d1a746644c35d9f5fade8"
+          }
+        },
+        {
+          "client_id": "193673341582-sbbt6db8sv82clms4ieu244up3ks6dph.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBy94PquSUWQ8ydlTRphlo-2DMTJ0SXNZU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "193673341582-sbbt6db8sv82clms4ieu244up3ks6dph.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
