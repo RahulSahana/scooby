@@ -28,9 +28,9 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   late final TextEditingController _passwordController;
 
-  String _userName = 'Rahul Sahana';
-  String _userDesc = 'West Bengal • App Developer';
-  String _userAvatar = '🤖';
+  String _userName = 'Guest';
+  String _userDesc = 'Guest Account';
+  String _userAvatar = '👤';
   String _appVersion = 'Loading...';
 
   final List<String> _avatarOptions = [
@@ -60,20 +60,45 @@ class _ProfileScreenState extends State<ProfileScreen> {
     super.dispose();
   }
 
+  String _deriveDefaultName(User? user) {
+    if (user == null) return 'Guest';
+
+    final displayName = user.displayName?.trim();
+    if (displayName != null && displayName.isNotEmpty) {
+      return displayName;
+    }
+
+    final email = user.email?.trim();
+    if (email != null && email.isNotEmpty && email.contains('@')) {
+      var handle = email.split('@').first.trim();
+      // Strip trailing digits e.g. atanumandal59 -> atanumandal
+      handle = handle.replaceAll(RegExp(r'\d+$'), '');
+      if (handle.isNotEmpty) {
+        final parts = handle.split(RegExp(r'[\._-]')).where((p) => p.isNotEmpty);
+        if (parts.isNotEmpty) {
+          return parts.map((p) => p[0].toUpperCase() + p.substring(1)).join(' ');
+        }
+        return handle[0].toUpperCase() + handle.substring(1);
+      }
+    }
+
+    return 'Guest';
+  }
+
   Future<void> _loadProfileData() async {
     final prefs = await SharedPreferences.getInstance();
     final packageInfo = await PackageInfo.fromPlatform();
+    final user = FirebaseAuth.instance.currentUser;
+
+    final defaultDerivedName = _deriveDefaultName(user);
 
     if (!mounted) return;
 
     setState(() {
-      _userName =
-          prefs.getString('profile_name') ??
-          FirebaseAuth.instance.currentUser?.displayName ??
-          'Scooby rider';
-      _userDesc =
-          prefs.getString('profile_desc') ?? 'West Bengal • EV Developer';
-      _userAvatar = prefs.getString('profile_avatar') ?? '🤖';
+      _userName = prefs.getString('profile_name') ?? defaultDerivedName;
+      _userDesc = prefs.getString('profile_desc') ??
+          (user == null ? 'Guest Account' : 'West Bengal • EV Developer');
+      _userAvatar = prefs.getString('profile_avatar') ?? (user == null ? '👤' : '🤖');
       _appVersion = 'v${packageInfo.version}';
     });
   }
@@ -96,9 +121,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _signOut() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('profile_name');
+    await prefs.remove('profile_desc');
+    await prefs.remove('profile_avatar');
+
     await context.read<BatteryProvider>().bleService.disconnect();
     await BackgroundSyncService.stop();
     await FirebaseAuth.instance.signOut();
+
+    if (!mounted) return;
+
+    setState(() {
+      _userName = 'Guest';
+      _userDesc = 'Guest Account';
+      _userAvatar = '👤';
+    });
   }
 
   String _formatFirstOnDate(String date) {
